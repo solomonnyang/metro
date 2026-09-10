@@ -19,17 +19,22 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const safeEqual = (a, b) => {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+};
+
 router.post('/login', (req, res) => {
-  const { password } = req.body || {};
-  const expected = process.env.ADMIN_PASSWORD;
-  if (!expected) {
+  const { username, password } = req.body || {};
+  const expectedUser = process.env.ADMIN_USERNAME || 'admin';
+  const expectedPass = process.env.ADMIN_PASSWORD;
+  if (!expectedPass) {
     return res.status(500).json({ error: 'Admin password not configured' });
   }
 
-  const provided = Buffer.from(String(password || ''));
-  const target = Buffer.from(expected);
-  if (provided.length !== target.length || !crypto.timingSafeEqual(provided, target)) {
-    return res.status(401).json({ error: 'Invalid password' });
+  if (!safeEqual(username, expectedUser) || !safeEqual(password, expectedPass)) {
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   res.json({ success: true, token: adminToken() });

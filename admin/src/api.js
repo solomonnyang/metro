@@ -22,14 +22,14 @@ const request = async (path, options = {}) => {
   return data;
 };
 
-export const login = async (password) => {
+export const login = async (username, password) => {
   const res = await fetch('/api/admin/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
+    body: JSON.stringify({ username, password })
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) throw new Error(data.error || 'Invalid password');
+  if (!res.ok || !data.success) throw new Error(data.error || 'Invalid username or password');
   return data.token;
 };
 
