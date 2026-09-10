@@ -140,7 +140,7 @@ const submit = async () => {
   box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
 }
 h1 { color: #fff; font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
-h1 span { color: var(--accent); }
+h1 span { color: #2aabee; }
 .tag { color: #93a5c8; font-size: 15px; margin-top: 10px; max-width: 380px; line-height: 1.6; }
 .feats { list-style: none; margin-top: 34px; display: grid; gap: 14px; }
 .feats li {
@@ -181,7 +181,7 @@ form label {
   align-items: center;
   gap: 10px;
   background: rgba(13, 21, 38, .85);
-  border: 1px solid var(--border-2);
+  border: 1px solid #22314f;
   border-radius: 12px;
   padding: 0 14px;
   margin-bottom: 18px;
@@ -199,7 +199,7 @@ form label {
 }
 .field input::placeholder { color: #46587d; }
 .field.focus {
-  border-color: var(--accent);
+  border-color: #2aabee;
   background: rgba(13, 21, 38, 1);
   box-shadow: 0 0 0 4px rgba(42, 171, 238, .12);
 }

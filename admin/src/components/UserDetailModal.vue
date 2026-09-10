@@ -1,6 +1,8 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue';
+import { X, Phone, Mail, Hash, CalendarDays, Activity, UserCheck, UserX, Trash2, CheckCircle2 } from 'lucide-vue-next';
 import { getUserDetail, patchUser, deleteUser } from '../api.js';
+import { initials, avatarColor } from '../utils/avatar.js';
 
 const props = defineProps({
   user: { type: Object, required: true }
@@ -14,6 +16,10 @@ const naira = (n) =>
   new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n || 0);
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '\u2014';
+
+const fullName = computed(() =>
+  `${(detail.value?.firstName || '')} ${(detail.value?.lastName || '')}`.trim() || detail.value?.username || 'User'
+);
 
 const load = async () => {
   detail.value = await getUserDetail(props.user.id);
@@ -42,49 +48,64 @@ const remove = async () => {
   }
 };
 
+const ok = (s) => s === 'success' || s === 'paid' || s === true;
+
 onMounted(load);
 watch(() => props.user.id, load);
-
-const status = (s) => s === 'success' || s === 'paid' || s === true;
 </script>
 
 <template>
   <div class="overlay" @click.self="emit('close')">
     <div class="modal">
-      <button class="close" @click="emit('close')">✕</button>
+      <button class="close icon-btn" @click="emit('close')"><X :size="18" :stroke-width="2" /></button>
 
-      <div v-if="!detail" class="loading">Loading user...</div>
+      <div v-if="!detail" class="loading">Loading user…</div>
       <template v-else>
-        <h3>{{ detail.firstName }} {{ detail.lastName }}</h3>
-        <div class="idline">@{{ detail.username || 'no username' }} · {{ detail.id }}</div>
-
-        <div class="mod-col">
-          <h4>Details</h4>
-          <div class="kv"><b>Telegram ID</b><span>{{ detail.telegramId }}</span></div>
-          <div class="kv"><b>Email</b><span>{{ detail.email || '—' }}</span></div>
-          <div class="kv"><b>Phone</b><span>{{ detail.phone || '—' }}</span></div>
-          <div class="kv">
-            <b>Status</b>
-            <span><span class="badge" :class="detail.isActive ? 'active' : 'inactive'">{{ detail.isActive ? 'Active' : 'Inactive' }}</span></span>
+        <div class="profile-head">
+          <div
+            class="avatar big"
+            :style="{ background: avatarColor(fullName) + '22', color: avatarColor(fullName) }"
+          >
+            {{ initials(fullName) }}
           </div>
-          <div class="kv"><b>Joined</b><span>{{ fmtDate(detail.createdAt) }}</span></div>
-          <div class="kv"><b>Last activity</b><span>{{ fmtDate(detail.lastInteraction) }}</span></div>
+          <div class="muted-wrap">
+            <h3>{{ fullName }}</h3>
+            <div class="idline">@{{ detail.username || 'no username' }} · {{ detail.id }}</div>
+            <div class="status-row">
+              <span class="badge" :class="detail.isActive ? 'success' : 'danger'">
+                {{ detail.isActive ? 'Active' : 'Inactive' }}
+              </span>
+              <span class="badge primary">{{ (detail.accounts || []).length }} meters</span>
+              <span class="badge info">{{ (detail.payments || []).length }} payments</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="mod-col">
+            <h4>Contact details</h4>
+            <div class="kv"><Hash :size="14" :stroke-width="2" /><span><b>Telegram ID</b>{{ detail.telegramId }}</span></div>
+            <div class="kv"><Mail :size="14" :stroke-width="2" /><span><b>Email</b>{{ detail.email || '—' }}</span></div>
+            <div class="kv"><Phone :size="14" :stroke-width="2" /><span><b>Phone</b>{{ detail.phone || '—' }}</span></div>
+            <div class="kv"><CalendarDays :size="14" :stroke-width="2" /><span><b>Joined</b>{{ fmtDate(detail.createdAt) }}</span></div>
+            <div class="kv"><Activity :size="14" :stroke-width="2" /><span><b>Last activity</b>{{ fmtDate(detail.lastInteraction) }}</span></div>
+          </div>
         </div>
 
         <div class="mod-col">
           <h4>Meter accounts ({{ (detail.accounts || []).length }})</h4>
-          <p v-if="!detail.accounts || detail.accounts.length === 0" class="empty" style="padding:14px">No meter accounts</p>
+          <p v-if="!detail.accounts || detail.accounts.length === 0" class="empty">No meter accounts yet</p>
           <table v-else class="mini-table">
             <thead>
-              <tr><th>Meter</th><th>Name</th><th>Type</th><th>Disco</th><th>Status</th></tr>
+              <tr><th>Meter</th><th>Name on account</th><th>Type</th><th>Disco</th><th>Status</th></tr>
             </thead>
             <tbody>
               <tr v-for="a in detail.accounts" :key="a.id">
-                <td>{{ a.meterNumber }}</td>
+                <td class="mono">{{ a.meterNumber }}</td>
                 <td>{{ a.accountName }}</td>
-                <td>{{ a.accountType }}</td>
+                <td class="cap">{{ a.accountType }}</td>
                 <td>{{ a.distributionCompany }}</td>
-                <td><span class="badge" :class="a.isActive ? 'active' : 'inactive'">{{ a.isActive ? 'Active' : 'Inactive' }}</span></td>
+                <td><span class="badge" :class="a.isActive ? 'success' : 'danger'">{{ a.isActive ? 'Active' : 'Inactive' }}</span></td>
               </tr>
             </tbody>
           </table>
@@ -92,29 +113,36 @@ const status = (s) => s === 'success' || s === 'paid' || s === true;
 
         <div class="mod-col">
           <h4>Recent payments ({{ (detail.payments || []).length }})</h4>
-          <p v-if="!detail.payments || detail.payments.length === 0" class="empty" style="padding:14px">No payments</p>
+          <p v-if="!detail.payments || detail.payments.length === 0" class="empty">No payments yet</p>
           <table v-else class="mini-table">
             <thead>
               <tr><th>Reference</th><th>Amount</th><th>Status</th><th>Token</th><th>Date</th></tr>
             </thead>
             <tbody>
               <tr v-for="p in detail.payments" :key="p.id">
-                <td style="color:var(--accent)">{{ p.paystackReference }}</td>
-                <td style="font-weight:600;color:var(--green)">{{ naira(p.amount) }}</td>
-                <td><span class="badge" :class="status(p.status) ? 'active' : 'inactive'">{{ p.status }}</span></td>
-                <td style="font-size:12px;color:var(--muted)">{{ p.bill?.token || '—' }}</td>
-                <td style="font-size:12px;color:var(--muted)">{{ fmtDate(p.createdAt) }}</td>
+                <td class="mono py">{{ p.paystackReference }}</td>
+                <td class="amt">{{ naira(p.amount) }}</td>
+                <td><span class="badge" :class="ok(p.status) ? 'success' : 'danger'">{{ p.status }}</span></td>
+                <td class="tkn">{{ p.bill?.token || '—' }}</td>
+                <td class="muted-txt">{{ fmtDate(p.createdAt) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="modal-actions">
-          <button class="btn-accent" :disabled="busy" @click="toggleActive">
+        <div class="actions">
+          <button class="btn btn-primary" :disabled="busy" @click="toggleActive">
+            <component :is="detail.isActive ? UserX : UserCheck" :size="16" :stroke-width="2" />
             {{ detail.isActive ? 'Deactivate user' : 'Activate user' }}
           </button>
-          <button class="btn-danger" :disabled="busy" @click="remove">Delete user</button>
-          <button class="btn-outline" @click="emit('close')">Close</button>
+          <button class="btn btn-danger" :disabled="busy" @click="remove">
+            <Trash2 :size="16" :stroke-width="2" />
+            Delete user
+          </button>
+          <button class="btn btn-outline" @click="emit('close')">
+            <CheckCircle2 :size="16" :stroke-width="2" />
+            Close
+          </button>
         </div>
       </template>
     </div>
@@ -125,7 +153,8 @@ const status = (s) => s === 'success' || s === 'paid' || s === true;
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 8, 18, .72);
+  background: rgba(34, 41, 47, 0.55);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,49 +162,53 @@ const status = (s) => s === 'success' || s === 'paid' || s === true;
   z-index: 40;
 }
 .modal {
+  position: relative;
   width: 100%;
-  max-width: 720px;
+  max-width: 760px;
   max-height: 88vh;
   overflow-y: auto;
-  background: var(--panel);
-  border: 1px solid var(--border-2);
-  border-radius: 16px;
-  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(34, 41, 47, 0.3);
+  padding: 26px 28px;
 }
-h3 { color: #fff; font-size: 18px; font-weight: 800; margin-bottom: 4px; }
-.idline { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
-.close { float: right; background: none; border: none; color: var(--muted); font-size: 20px; }
-.kv {
-  display: grid;
-  grid-template-columns: 150px 1fr;
-  gap: 8px 12px;
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-.kv b { color: var(--muted); font-weight: 600; }
-.kv span { color: #e2e8f0; }
-.mod-col { margin-bottom: 20px; }
+.close { position: absolute; top: 16px; right: 16px; }
+
+.profile-head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.avatar.big { width: 62px; height: 62px; font-size: 21px; border-radius: 16px; }
+h3 { font-size: 19px; font-weight: 700; color: var(--heading); }
+.idline { color: var(--muted); font-size: 12px; margin: 3px 0 10px; word-break: break-all; }
+.status-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.mod-col { margin-bottom: 22px; }
 .mod-col h4 {
-  color: #b9c7e8;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  margin-bottom: 10px;
-}
-.mini-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.mini-table th, .mini-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.mini-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
-.modal-actions button {
-  flex: 1;
-  padding: 11px;
-  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 700;
-  font-size: 14px;
-  border: none;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
 }
-.btn-accent { background: linear-gradient(90deg, var(--accent), #229ed9); color: #fff; }
-.btn-outline { background: none; color: var(--muted); border: 1px solid var(--border-2) !important; }
-.btn-danger { background: rgba(248, 113, 113, .15); color: var(--red); border: 1px solid rgba(248, 113, 113, .3) !important; }
-.modal-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.kv { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 9px; color: var(--primary); }
+.kv span { color: var(--text); }
+.kv b { display: inline-block; width: 108px; color: var(--muted); font-weight: 600; }
+.kv span b { color: var(--muted); }
+
+.mini-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mini-table th, .mini-table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mini-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.mini-table tr:hover td { background: #fbfbfd; }
+.mono { font-variant-numeric: tabular-nums; color: var(--primary); font-weight: 600; }
+.mono.py { color: var(--text); }
+.amt { color: var(--success); font-weight: 700; }
+.tkn { color: var(--muted); font-size: 11.5px; }
+.cap { text-transform: capitalize; }
+.muted-txt { color: var(--muted); font-size: 11.5px; }
+
+.actions { display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.actions .btn { flex: 1; min-width: 150px; }
 </style>

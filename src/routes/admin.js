@@ -42,7 +42,7 @@ router.post('/login', (req, res) => {
 
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
-    const [
+const [
       totalUsers,
       activeUsers,
       totalAccounts,
@@ -50,7 +50,9 @@ router.get('/stats', requireAdmin, async (req, res) => {
       paidBills,
       totalPayments,
       successfulPayments,
-      revenueResult
+      revenue,
+      revenueByMonth,
+      recentPayments
     ] = await Promise.all([
       User.count(),
       User.count({ where: { isActive: true } }),
@@ -59,8 +61,43 @@ router.get('/stats', requireAdmin, async (req, res) => {
       Bill.count({ where: { status: 'paid' } }),
       Payment.count(),
       Payment.count({ where: { status: 'success' } }),
-      Payment.sum('amount', { where: { status: 'success' }, plain: true }).then((r) => Number(r) || 0)
+      Payment.sum('amount', { where: { status: 'success' }, plain: true }).then((r) => Number(r) || 0),
+      Payment.findAll({
+        where: { status: 'success', paidAt: { [Op.ne]: null } },
+        attributes: [
+          [sequelize.fn('date_trunc', 'month', sequelize.col('paidAt')), 'month'],
+          [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('amount')), 0), 'total']
+        ],
+        group: [sequelize.fn('date_trunc', 'month', sequelize.col('paidAt'))],
+        order: [[sequelize.fn('date_trunc', 'month', sequelize.col('paidAt')), 'ASC']],
+        raw: true
+      }),
+      Payment.findAll({
+        where: { status: 'success' },
+        order: [['createdAt', 'DESC']],
+        limit: 6,
+        include: [
+          { model: User, as: 'user', attributes: ['firstName', 'lastName', 'username'] },
+          { model: Bill, as: 'bill', attributes: ['billReference', 'token', 'period'] }
+        ]
+      })
     ]);
+
+    const monthData = {};
+    revenueByMonth.forEach((r) => {
+      monthData[r.month instanceof Date ? r.month.toISOString().slice(0, 7) : String(r.month).slice(0, 7)] = Number(r.total);
+    });
+
+    const labels = [];
+    const totals = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const key = d.toISOString().slice(0, 7);
+      labels.push(d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+      totals.push(monthData[key] || 0);
+    }
 
     res.json({
       success: true,
@@ -72,7 +109,20 @@ router.get('/stats', requireAdmin, async (req, res) => {
         paidBills,
         totalPayments,
         successfulPayments,
-        revenue: revenueResult
+        revenue,
+        revenueByMonth: { labels, totals },
+        recentPayments: recentPayments.map((p) => ({
+          id: p.id,
+          paystackReference: p.paystackReference,
+          amount: p.amount,
+          currency: p.currency,
+          status: p.status,
+          createdAt: p.createdAt,
+          userName: [p.user?.firstName, p.user?.lastName].filter(Boolean).join(' ') || p.user?.username || 'Unknown',
+          username: p.user?.username || '',
+          billReference: p.bill?.billReference || '',
+          token: p.bill?.token || ''
+        }))
       }
     });
   } catch (error) {
