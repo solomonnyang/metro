@@ -1,12 +1,17 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import {
+  Zap, User, Lock, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck, Users, BarChart3, KeyRound
+} from 'lucide-vue-next';
 import { login, setToken } from '../api.js';
 
 const router = useRouter();
 const username = ref('');
 const password = ref('');
 const show = ref(false);
+const focusUser = ref(false);
+const focusPass = ref(false);
 const busy = ref(false);
 const error = ref('');
 
@@ -27,75 +32,78 @@ const submit = async () => {
 
 <template>
   <div class="login-shell">
-    <div class="brand-panel">
-      <div class="glow glow-a"></div>
-      <div class="glow glow-b"></div>
-      <div class="brand-inner">
-        <div class="brand-logo">⚡</div>
-        <h1>Metro<span>Electric</span></h1>
-        <p class="tag">Admin control center for the electricity bill bot.</p>
-        <ul class="feats">
-          <li><span>👥</span> Manage every user &amp; meter account</li>
-          <li><span>💰</span> Track revenue and payments live</li>
-          <li><span>🔑</span> Toggle accounts and tokens securely</li>
-        </ul>
-      </div>
-      <div class="brand-foot">Secure admin access · v1.0</div>
-    </div>
+    <div class="glow glow-a"></div>
+    <div class="glow glow-b"></div>
 
-    <div class="form-side">
-      <div class="form-card">
-        <div class="card-head">
-          <div class="mini-bolt">⚡</div>
-          <h2>Welcome back</h2>
-          <p>Sign in to the MetroElectric dashboard</p>
+    <div class="login-card">
+      <div class="brand">
+        <div class="logo"><Zap :size="20" :stroke-width="2.6" /></div>
+        <span>MetroElectric</span>
+      </div>
+
+      <div class="head">
+        <h1>Welcome back!</h1>
+        <p>Sign in to the admin dashboard</p>
+      </div>
+
+      <form @submit.prevent="submit" novalidate>
+        <label for="username">Username</label>
+        <div class="field" :class="{ focus: focusUser }">
+          <User :size="17" :stroke-width="2" class="ic" />
+          <input
+            id="username"
+            type="text"
+            v-model="username"
+            placeholder="Enter your username"
+            autocomplete="username"
+            spellcheck="false"
+            @focus="focusUser = true"
+            @blur="focusUser = false"
+          />
         </div>
 
-        <form @submit.prevent="submit" novalidate>
-          <label for="username">Username</label>
-          <div class="field" :class="{ focus: focusUser }">
-            <span class="ic">👤</span>
-            <input
-              id="username"
-              type="text"
-              v-model="username"
-              placeholder="Enter your username"
-              autocomplete="username"
-              spellcheck="false"
-              @focus="focusUser = true"
-              @blur="focusUser = false"
-            />
-          </div>
-
-          <label for="password">Password</label>
-          <div class="field" :class="{ focus: focusPass }">
-            <span class="ic">🔒</span>
-            <input
-              id="password"
-              :type="show ? 'text' : 'password'"
-              v-model="password"
-              placeholder="Enter your password"
-              autocomplete="current-password"
-              @focus="focusPass = true"
-              @blur="focusPass = false"
-              @keydown.enter="submit"
-            />
-            <button type="button" class="eye" :aria-label="show ? 'Hide password' : 'Show password'" @click="show = !show">
-              {{ show ? '🙈' : '👁️' }}
-            </button>
-          </div>
-
-          <Transition name="err">
-            <div v-if="error" class="error-banner">⚠️ {{ error }}</div>
-          </Transition>
-
-          <button type="submit" class="submit" :disabled="busy || !username || !password">
-            <span v-if="busy" class="spinner"></span>
-            <span>{{ busy ? 'Signing in…' : 'Sign In →' }}</span>
+        <label for="password">Password</label>
+        <div class="field" :class="{ focus: focusPass }">
+          <Lock :size="17" :stroke-width="2" class="ic" />
+          <input
+            id="password"
+            :type="show ? 'text' : 'password'"
+            v-model="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+            @focus="focusPass = true"
+            @blur="focusPass = false"
+            @keydown.enter="submit"
+          />
+          <button type="button" class="eye" :aria-label="show ? 'Hide password' : 'Show password'" @click="show = !show">
+            <component :is="show ? EyeOff : Eye" :size="17" :stroke-width="2" />
           </button>
-        </form>
+        </div>
+
+        <Transition name="err">
+          <div v-if="error" class="error-banner">
+            <AlertCircle :size="16" :stroke-width="2.2" />
+            {{ error }}
+          </div>
+        </Transition>
+
+        <button type="submit" class="btn btn-primary submit" :disabled="busy || !username || !password">
+          <span v-if="busy" class="spinner"></span>
+          <LogIn v-else :size="17" :stroke-width="2.2" />
+          {{ busy ? 'Signing in…' : 'Sign In' }}
+        </button>
+      </form>
+
+      <div class="feats">
+        <div class="feat"><Users :size="15" :stroke-width="2" /> Manage users &amp; meters</div>
+        <div class="feat"><BarChart3 :size="15" :stroke-width="2" /> Track revenue live</div>
+        <div class="feat"><KeyRound :size="15" :stroke-width="2" /> Secure admin access</div>
       </div>
-      <p class="foot-note">Protected area · All attempts are monitored</p>
+
+      <div class="foot-note">
+        <ShieldCheck :size="13" :stroke-width="2" />
+        Protected area &middot; All attempts are monitored
+      </div>
     </div>
   </div>
 </template>
@@ -103,76 +111,56 @@ const submit = async () => {
 <style scoped>
 .login-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  background: #070b16;
-}
-
-/* Brand panel */
-.brand-panel {
-  position: relative;
-  overflow: hidden;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 64px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   background:
-    radial-gradient(900px 500px at 85% -5%, #143269 0%, transparent 60%),
-    linear-gradient(160deg, #0f1e3f 0%, #0a142c 55%, #070b16 100%);
+    radial-gradient(700px 420px at 12% -8%, rgba(115, 103, 240, 0.12) 0%, transparent 60%),
+    radial-gradient(700px 420px at 92% 108%, rgba(0, 207, 232, 0.1) 0%, transparent 60%),
+    var(--body-bg);
 }
 .glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(90px);
-  opacity: .55;
+  filter: blur(100px);
+  pointer-events: none;
 }
-.glow-a { width: 340px; height: 340px; background: rgba(42, 171, 238, .35); top: -120px; right: -60px; }
-.glow-b { width: 260px; height: 260px; background: rgba(124, 58, 237, .3); bottom: -80px; left: -40px; }
-.brand-inner { position: relative; z-index: 1; }
-.brand-logo {
-  width: 62px; height: 62px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 30px;
-  background: linear-gradient(135deg, rgba(42, 171, 238, .25), rgba(42, 171, 238, .08));
-  border: 1px solid rgba(42, 171, 238, .35);
-  border-radius: 16px;
-  margin-bottom: 26px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
-}
-h1 { color: #fff; font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
-h1 span { color: #2aabee; }
-.tag { color: #93a5c8; font-size: 15px; margin-top: 10px; max-width: 380px; line-height: 1.6; }
-.feats { list-style: none; margin-top: 34px; display: grid; gap: 14px; }
-.feats li {
-  display: flex; align-items: center; gap: 12px;
-  color: #cdd8ee; font-size: 14px; font-weight: 500;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, .04);
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 12px;
-}
-.feats li span { font-size: 17px; }
-.brand-foot { position: relative; z-index: 1; color: #54678c; font-size: 12px; letter-spacing: .04em; }
+.glow-a { width: 340px; height: 340px; background: rgba(115, 103, 240, 0.14); top: -140px; left: 28%; }
+.glow-b { width: 300px; height: 300px; background: rgba(0, 207, 232, 0.12); bottom: -120px; right: 20%; }
 
-/* Form side */
-.form-side {
+.login-card {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 34px 36px 28px;
+}
+.brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 26px; }
+.logo {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  background: radial-gradient(600px 400px at 50% 0%, #0f1b33 0%, #070b16 60%);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #7367f0, #9e95f5);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(115, 103, 240, 0.45);
 }
-.form-card { width: 100%; max-width: 400px; }
-.card-head { margin-bottom: 28px; text-align: center; }
-.mini-bolt { font-size: 26px; margin-bottom: 10px; }
-.card-head h2 { color: #fff; font-size: 23px; font-weight: 800; letter-spacing: -.3px; }
-.card-head p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.brand span { color: var(--heading); font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+
+.head { text-align: center; margin-bottom: 26px; }
+.head h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.head p { color: var(--muted); font-size: 13px; margin-top: 5px; }
 
 form label {
   display: block;
-  color: #9aa9c9;
-  font-size: 12px;
+  color: var(--text);
+  font-size: 12.5px;
   font-weight: 600;
   margin: 0 2px 7px;
 }
@@ -180,78 +168,101 @@ form label {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(13, 21, 38, .85);
-  border: 1px solid #22314f;
-  border-radius: 12px;
-  padding: 0 14px;
-  margin-bottom: 18px;
-  transition: border-color .2s, box-shadow .2s, background .2s;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 13px;
+  margin-bottom: 17px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.field .ic { font-size: 15px; opacity: .8; }
+.field .ic { color: var(--muted); flex-shrink: 0; }
 .field input {
   flex: 1;
   background: none;
   border: none;
-  color: #fff;
-  font-size: 15px;
-  padding: 13px 0;
+  color: var(--heading);
+  font-size: 14px;
+  padding: 12px 0;
   outline: none;
 }
-.field input::placeholder { color: #46587d; }
+.field input::placeholder { color: #c9c6cf; }
 .field.focus {
-  border-color: #2aabee;
-  background: rgba(13, 21, 38, 1);
-  box-shadow: 0 0 0 4px rgba(42, 171, 238, .12);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
 }
-.eye { background: none; border: none; font-size: 16px; padding: 4px; }
+.field.focus .ic { color: var(--primary); }
+.eye {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.eye:hover { color: var(--primary); }
 
 .error-banner {
-  display: flex; align-items: center; gap: 8px;
-  background: rgba(248, 113, 113, .12);
-  border: 1px solid rgba(248, 113, 113, .28);
-  color: #fca5a5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--danger-soft);
+  border: 1px solid rgba(234, 84, 85, 0.25);
+  color: var(--danger);
   font-size: 13px;
   font-weight: 600;
   padding: 11px 14px;
-  border-radius: 10px;
+  border-radius: 8px;
   margin-bottom: 16px;
 }
-.err-enter-active, .err-leave-active { transition: opacity .2s, transform .2s; }
+.err-enter-active, .err-leave-active { transition: opacity 0.2s, transform 0.2s; }
 .err-enter-from, .err-leave-to { opacity: 0; transform: translateY(-4px); }
 
 .submit {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: linear-gradient(90deg, #2aabee, #1f8fd4);
-  border: none;
-  color: #fff;
-  font-weight: 700;
-  font-size: 15px;
-  padding: 14px;
-  border-radius: 12px;
   margin-top: 6px;
-  transition: transform .15s, box-shadow .15s, opacity .15s;
-  box-shadow: 0 14px 34px rgba(42, 171, 238, .3);
+  padding: 12px;
+  font-size: 14px;
 }
-.submit:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 18px 40px rgba(42, 171, 238, .4); }
-.submit:disabled { opacity: .5; cursor: not-allowed; }
 .spinner {
   width: 16px; height: 16px;
-  border: 2px solid rgba(255, 255, 255, .4);
+  border: 2px solid rgba(255, 255, 255, 0.45);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: spin .7s linear infinite;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.foot-note { color: #46587d; font-size: 12px; margin-top: 26px; }
+.feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 22px; }
+.feat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 8px 10px;
+  background: var(--body-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.feat svg { color: var(--primary); flex-shrink: 0; }
 
-@media (max-width: 820px) {
-  .login-shell { grid-template-columns: 1fr; }
-  .brand-panel { display: none; }
-  .form-side { padding: 28px; }
+.foot-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.foot-note svg { color: var(--success); }
+
+@media (max-width: 480px) {
+  .login-card { padding: 26px 20px 22px; }
 }
 </style>
