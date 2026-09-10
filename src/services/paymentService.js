@@ -135,15 +135,6 @@ class PaymentService {
     });
   }
 
-  static async getPaymentById(id) {
-    return await Payment.findByPk(id, {
-      include: [
-        { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
-        { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
-      ]
-    });
-  }
-
   static async handleWebhook(event, data) {
     switch (event) {
       case 'charge.success':
