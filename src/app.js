@@ -2,15 +2,19 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 import paymentRoutes from './routes/payment.js';
+import adminRoutes from './routes/admin.js';
 import sequelize from './config/database.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Middleware
 app.use('/api/webhook', express.json({
@@ -24,6 +28,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api', paymentRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Admin dashboard (static Vue app)
+app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
 
 // Health check
 app.get('/health', (req, res) => {
