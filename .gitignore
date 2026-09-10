@@ -24,6 +24,9 @@ data/
 *.sqlite
 db.sqlite3
 
+# Dev scripts
+start.sh
+
 # OS / editor
 .DS_Store
 Thumbs.db
