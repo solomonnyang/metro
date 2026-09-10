@@ -108,14 +108,14 @@ export const handlePayInput = async (bot, msg) => {
 💰 Amount: ${formatCurrency(bill.amount)}
 🔖 Payment Ref: \`${payment.paystackReference}\`
 
-Click below to complete your payment securely via Paystack.
+Pay by *Bank Transfer* via Paystack. A virtual account will be generated for your payment.
     `;
 
     await bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '💳 Pay Now', url: authorizationUrl }],
+          [{ text: '🏦 Pay by Bank Transfer', url: authorizationUrl }],
           [
             { text: '❌ Cancel', callback_data: `cancel_payment_${payment.id}` },
             { text: '⬅️ Back to Menu', callback_data: 'main_menu' }

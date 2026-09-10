@@ -16,10 +16,15 @@ class PaystackService {
   static async initializeTransaction(email, amount, metadata = {}) {
     try {
       const returnLink = `https://t.me/${process.env.BOT_USERNAME}`;
+      const channels = (process.env.PAYSTACK_CHANNELS || 'bank_transfer')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
       const response = await paystackApi.post('/transaction/initialize', {
         email,
         amount: Math.round(amount * 100),
         currency: 'NGN',
+        channels,
         callback_url: returnLink,
         metadata: {
           ...metadata,
