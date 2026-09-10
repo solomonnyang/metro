@@ -33,12 +33,23 @@ class PaystackService {
   }
 
   static async verifyTransaction(reference) {
-    try {
-      const response = await paystackApi.get(`/transaction/verify/${reference}`);
-      return response.data;
-    } catch (error) {
-      throw new Error(`Paystack verification failed: ${error.message}`);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const response = await paystackApi.get(`/transaction/verify/${reference}`);
+        return response.data;
+      } catch (error) {
+        const status = error.response?.status || null;
+        if (status && status < 500 && status !== 429) {
+          const e = new Error(`Paystack verification failed: ${error.message}`);
+          e.status = status;
+          throw e;
+        }
+        lastError = error;
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
     }
+    throw new Error(`Paystack verification failed: ${lastError.message}`);
   }
 
   static async createCustomer(email, firstName, lastName, phone) {
