@@ -8,12 +8,29 @@ const router = express.Router();
 
 const ADMIN_SALT = 'metro-electric-admin-v1';
 
+const adminSecret = () => {
+  const plain = process.env.ADMIN_PASSWORD;
+  const hash = process.env.ADMIN_PASSWORD_HASH;
+  if (hash) return `hash:${hash}`;
+  if (plain) return `plain:${plain}`;
+  return null;
+};
+
 const adminToken = () =>
-  crypto.createHash('sha256').update(`${process.env.ADMIN_PASSWORD}${ADMIN_SALT}`).digest('hex');
+  crypto.createHash('sha256').update(`${adminSecret()}${ADMIN_SALT}`).digest('hex');
+
+const passwordMatches = (provided) => {
+  const providedHash = crypto.createHash('sha256').update(String(provided || '')).digest('hex');
+  const storedHash = process.env.ADMIN_PASSWORD_HASH;
+  if (storedHash) {
+    return safeEqual(providedHash, storedHash);
+  }
+  return safeEqual(provided, process.env.ADMIN_PASSWORD);
+};
 
 const requireAdmin = (req, res, next) => {
   const provided = req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '');
-  if (!process.env.ADMIN_PASSWORD || provided !== adminToken()) {
+  if (!adminSecret() || provided !== adminToken()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
@@ -28,12 +45,11 @@ const safeEqual = (a, b) => {
 router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
   const expectedUser = process.env.ADMIN_USERNAME || 'admin';
-  const expectedPass = process.env.ADMIN_PASSWORD;
-  if (!expectedPass) {
-    return res.status(500).json({ error: 'Admin password not configured' });
+  if (!adminSecret()) {
+    return res.status(500).json({ error: 'Admin credentials not configured' });
   }
 
-  if (!safeEqual(username, expectedUser) || !safeEqual(password, expectedPass)) {
+  if (!safeEqual(username, expectedUser) || !passwordMatches(password)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
