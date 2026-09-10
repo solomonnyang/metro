@@ -5,10 +5,12 @@ import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 import paymentRoutes from './routes/payment.js';
 import adminRoutes from './routes/admin.js';
 import sequelize from './config/database.js';
+import { Admin } from './models/index.js';
 
 dotenv.config();
 
@@ -55,6 +57,25 @@ app.use((err, req, res, next) => {
 });
 
 // Database connection and server start
+const seedAdmin = async () => {
+  const count = await Admin.count();
+  if (count > 0) return { seeded: false };
+
+  const username = process.env.ADMIN_USERNAME || 'admin';
+  const hashFromEnv = process.env.ADMIN_PASSWORD_HASH;
+  const plainFromEnv = process.env.ADMIN_PASSWORD;
+  const passwordHash =
+    hashFromEnv ||
+    (plainFromEnv ? crypto.createHash('sha256').update(plainFromEnv).digest('hex') : null);
+
+  const hash = passwordHash || crypto.createHash('sha256').update(crypto.randomBytes(12).toString('hex')).digest('hex');
+
+  await Admin.create({ username, passwordHash: hash, name: 'Administrator', role: 'super_admin' });
+  console.log(`✅ Seeded default admin in database (username: ${username})`);
+  if (!passwordHash) console.log('   ⚠️  No ADMIN_PASSWORD_HASH was set — a random password was generated. Set one in .env and re-seed if needed.');
+  return { seeded: true };
+};
+
 const startServer = async () => {
   try {
     await sequelize.authenticate();
@@ -62,6 +83,9 @@ const startServer = async () => {
 
     await sequelize.sync({ alter: true });
     console.log('✅ Database synchronized');
+
+    await seedAdmin();
+    console.log('✅ Admin store ready (credentials stored in the Admin table)');
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);

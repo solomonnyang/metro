@@ -2,39 +2,17 @@ import express from 'express';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { User, Account, Bill, Payment, Transaction } from '../models/index.js';
+import { User, Account, Bill, Payment, Transaction, Admin } from '../models/index.js';
 
 const router = express.Router();
 
 const ADMIN_SALT = 'metro-electric-admin-v1';
 
-const adminSecret = () => {
-  const plain = process.env.ADMIN_PASSWORD;
-  const hash = process.env.ADMIN_PASSWORD_HASH;
-  if (hash) return `hash:${hash}`;
-  if (plain) return `plain:${plain}`;
-  return null;
-};
+const hashPassword = (plain) =>
+  crypto.createHash('sha256').update(String(plain || '')).digest('hex');
 
-const adminToken = () =>
-  crypto.createHash('sha256').update(`${adminSecret()}${ADMIN_SALT}`).digest('hex');
-
-const passwordMatches = (provided) => {
-  const providedHash = crypto.createHash('sha256').update(String(provided || '')).digest('hex');
-  const storedHash = process.env.ADMIN_PASSWORD_HASH;
-  if (storedHash) {
-    return safeEqual(providedHash, storedHash);
-  }
-  return safeEqual(provided, process.env.ADMIN_PASSWORD);
-};
-
-const requireAdmin = (req, res, next) => {
-  const provided = req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '');
-  if (!adminSecret() || provided !== adminToken()) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-};
+const adminToken = (admin) =>
+  crypto.createHash('sha256').update(`${admin.passwordHash}${ADMIN_SALT}`).digest('hex');
 
 const safeEqual = (a, b) => {
   const ba = Buffer.from(String(a || ''));
@@ -42,18 +20,27 @@ const safeEqual = (a, b) => {
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 };
 
-router.post('/login', (req, res) => {
-  const { username, password } = req.body || {};
-  const expectedUser = process.env.ADMIN_USERNAME || 'admin';
-  if (!adminSecret()) {
-    return res.status(500).json({ error: 'Admin credentials not configured' });
+const requireAdmin = async (req, res, next) => {
+  try {
+    const provided = req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '');
+    const admins = await Admin.findAll({ where: { isActive: true } });
+    const ok = admins.some((a) => safeEqual(adminToken(a), provided));
+    if (!ok) return res.status(401).json({ error: 'Unauthorized' });
+    next();
+  } catch (e) {
+    console.error('admin auth error:', e);
+    res.status(500).json({ error: 'Auth check failed' });
   }
+};
 
-  if (!safeEqual(username, expectedUser) || !passwordMatches(password)) {
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  const admin = await Admin.findOne({ where: { isActive: true, username: String(username || '').trim() } });
+  if (!admin || !safeEqual(hashPassword(password), admin.passwordHash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
-
-  res.json({ success: true, token: adminToken() });
+  await admin.update({ lastLoginAt: new Date() });
+  res.json({ success: true, token: adminToken(admin), user: { username: admin.username, name: admin.name, role: admin.role } });
 });
 
 const isWebhookSecretConfigured = () => {
@@ -61,13 +48,14 @@ const isWebhookSecretConfigured = () => {
   return s !== '' && s !== 'set_from_paystack_dashboard';
 };
 
-router.get('/config', requireAdmin, (req, res) => {
+router.get('/config', requireAdmin, async (req, res) => {
+  const admin = await Admin.findOne({ where: { isActive: true }, order: [['createdAt', 'ASC']] });
   res.json({
     success: true,
     config: {
       botUsername: process.env.BOT_USERNAME || null,
       botLink: process.env.BOT_USERNAME ? `https://t.me/${process.env.BOT_USERNAME}` : null,
-      adminUsername: process.env.ADMIN_USERNAME || 'admin',
+      adminUsername: admin ? admin.username : null,
       paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY
         ? `••••••••••${process.env.PAYSTACK_PUBLIC_KEY.slice(-6)}`
         : null,
@@ -79,6 +67,19 @@ router.get('/config', requireAdmin, (req, res) => {
       serverTime: new Date().toISOString()
     }
   });
+});
+
+router.get('/admins', requireAdmin, async (req, res) => {
+  try {
+    const admins = await Admin.findAll({
+      attributes: ['id', 'username', 'name', 'role', 'isActive', 'lastLoginAt', 'createdAt'],
+      order: [['createdAt', 'ASC']]
+    });
+    res.json({ success: true, admins });
+  } catch (e) {
+    console.error('admin list error:', e);
+    res.status(500).json({ error: 'Failed to load admins' });
+  }
 });
 
 router.get('/payments', requireAdmin, async (req, res) => {

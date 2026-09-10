@@ -3,6 +3,7 @@ import Account from './Account.js';
 import Bill from './Bill.js';
 import Payment from './Payment.js';
 import Transaction from './Transaction.js';
+import Admin from './Admin.js';
 
 User.hasMany(Account, { foreignKey: 'userId', as: 'accounts' });
 Account.belongsTo(User, { foreignKey: 'userId', as: 'user' });
@@ -24,5 +25,6 @@ export {
   Account,
   Bill,
   Payment,
-  Transaction
+  Transaction,
+  Admin
 };
