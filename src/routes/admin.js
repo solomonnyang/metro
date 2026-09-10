@@ -40,6 +40,83 @@ router.post('/login', (req, res) => {
   res.json({ success: true, token: adminToken() });
 });
 
+const isWebhookSecretConfigured = () => {
+  const s = process.env.PAYSTACK_WEBHOOK_SECRET || '';
+  return s !== '' && s !== 'set_from_paystack_dashboard';
+};
+
+router.get('/config', requireAdmin, (req, res) => {
+  res.json({
+    success: true,
+    config: {
+      botUsername: process.env.BOT_USERNAME || null,
+      botLink: process.env.BOT_USERNAME ? `https://t.me/${process.env.BOT_USERNAME}` : null,
+      adminUsername: process.env.ADMIN_USERNAME || 'admin',
+      paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY
+        ? `••••••••••${process.env.PAYSTACK_PUBLIC_KEY.slice(-6)}`
+        : null,
+      paystackSecretConfigured: !!process.env.PAYSTACK_SECRET_KEY,
+      webhookSecretConfigured: isWebhookSecretConfigured(),
+      webhookUrl: '/api/webhook',
+      platform: process.platform,
+      nodeVersion: process.version,
+      serverTime: new Date().toISOString()
+    }
+  });
+});
+
+router.get('/payments', requireAdmin, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const search = String(req.query.search || '').trim();
+    const status = String(req.query.status || '');
+    const where = {};
+    if (status && ['success', 'pending', 'processing', 'failed', 'refunded'].includes(status)) {
+      where.status = status;
+    }
+    if (search) {
+      where[Op.or] = [
+        { paystackReference: { [Op.iLike]: `%${search}%` } },
+        { '$user.firstName$': { [Op.iLike]: `%${search}%` } },
+        { '$user.lastName$': { [Op.iLike]: `%${search}%` } },
+        { '$user.username$': { [Op.iLike]: `%${search}%` } },
+        { '$bill.billReference$': { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+    const { rows, count } = await Payment.findAndCountAll({
+      where,
+      distinct: true,
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'username'] },
+        {
+          model: Bill,
+          as: 'bill',
+          attributes: ['id', 'billReference', 'token', 'period'],
+          include: [
+            {
+              model: Account,
+              as: 'account',
+              attributes: ['id', 'meterNumber', 'accountType', 'distributionCompany', 'accountName']
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      offset: (page - 1) * limit,
+      limit
+    });
+    res.json({
+      success: true,
+      payments: rows,
+      pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) }
+    });
+  } catch (e) {
+    console.error('admin payments error:', e);
+    res.status(500).json({ error: 'Failed to load payments' });
+  }
+});
+
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
 const [

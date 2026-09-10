@@ -1,28 +1,40 @@
 <script setup>
+import { useRoute } from 'vue-router';
 import { LayoutDashboard, Users, CreditCard, Settings, LogOut, Zap } from 'lucide-vue-next';
 
 defineEmits(['logout']);
+const route = useRoute();
 </script>
 
 <template>
   <aside class="sidebar">
-    <div class="brand">
+    <RouterLink to="/" class="brand">
       <div class="logo"><Zap :size="18" :stroke-width="2.6" /></div>
       <span>MetroElectric</span>
-    </div>
+    </RouterLink>
 
     <nav>
       <div class="section">Overview</div>
-      <a class="item active"><LayoutDashboard :size="18" :stroke-width="2" /> Dashboard</a>
-      <a class="item"><Users :size="18" :stroke-width="2" /> Users</a>
+      <RouterLink to="/" class="item" :class="{ active: route.path === '/' }">
+        <LayoutDashboard :size="18" :stroke-width="2" /> Dashboard
+      </RouterLink>
 
-      <div class="section">Billing</div>
-      <a class="item"><CreditCard :size="18" :stroke-width="2" /> Payments</a>
-      <a class="item"><Settings :size="18" :stroke-width="2" /> Settings</a>
+      <div class="section">Management</div>
+      <RouterLink to="/users" class="item" :class="{ active: route.path === '/users' }">
+        <Users :size="18" :stroke-width="2" /> Users
+      </RouterLink>
+      <RouterLink to="/payments" class="item" :class="{ active: route.path === '/payments' }">
+        <CreditCard :size="18" :stroke-width="2" /> Payments
+      </RouterLink>
+
+      <div class="section">General</div>
+      <RouterLink to="/settings" class="item" :class="{ active: route.path === '/settings' }">
+        <Settings :size="18" :stroke-width="2" /> Settings
+      </RouterLink>
     </nav>
 
     <div class="bottom">
-      <a class="item" @click="$emit('logout')"><LogOut :size="18" :stroke-width="2" /> Sign out</a>
+      <a class="item" @click.prevent="$emit('logout')"><LogOut :size="18" :stroke-width="2" /> Sign out</a>
     </div>
   </aside>
 </template>
@@ -38,7 +50,7 @@ defineEmits(['logout']);
   flex-direction: column;
   padding: 22px 16px;
 }
-.brand { display: flex; align-items: center; gap: 11px; padding: 0 10px 24px; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 0 10px 24px; text-decoration: none; }
 .logo {
   display: flex;
   align-items: center;
@@ -73,6 +85,7 @@ nav { flex: 1; overflow-y: auto; }
   margin-bottom: 4px;
   cursor: pointer;
   transition: all 0.18s ease;
+  text-decoration: none;
 }
 .item svg { opacity: 0.85; }
 .item:hover { background: rgba(255, 255, 255, 0.06); color: #d6d6d9; }

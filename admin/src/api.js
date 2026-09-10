@@ -35,6 +35,11 @@ export const login = async (username, password) => {
 
 export const getStats = () => request('/stats');
 
+export const getPayments = ({ page = 1, limit = 10, search = '', status = '' } = {}) =>
+  request(`/payments?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}`);
+
+export const getConfig = () => request('/config');
+
 export const getUsers = ({ page = 1, limit = 10, search = '' } = {}) =>
   request(`/users?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
 
