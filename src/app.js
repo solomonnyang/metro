@@ -30,8 +30,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Admin dashboard (static Vue app)
-app.use('/admin', express.static(path.join(__dirname, '../public/admin')));
+// Admin dashboard (Vue build)
+app.use('/admin', express.static(path.join(__dirname, '../admin/dist')));
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../admin/dist/index.html'));
+});
 
 // Health check
 app.get('/health', (req, res) => {
