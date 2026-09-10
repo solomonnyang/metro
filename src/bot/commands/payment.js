@@ -4,6 +4,7 @@ import BillService from '../../services/billService.js';
 import { formatCurrency, createInlineKeyboard, buttonRow } from '../../utils/helpers.js';
 import { setConversation, getConversation, clearConversation } from '../state.js';
 import { sendMainMenu } from '../mainMenu.js';
+import { sendPaymentConfirmation } from '../index.js';
 
 export const payCommand = async (bot, msg) => {
   const chatId = msg.chat.id;
@@ -117,9 +118,10 @@ Pay by *Bank Transfer* via Paystack. A virtual account will be generated for you
         inline_keyboard: [
           [{ text: '🏦 Pay by Bank Transfer', url: authorizationUrl }],
           [
-            { text: '❌ Cancel', callback_data: `cancel_payment_${payment.id}` },
-            { text: '⬅️ Back to Menu', callback_data: 'main_menu' }
-          ]
+            { text: '✅ I\'ve Paid', callback_data: `check_payment_${payment.id}` },
+            { text: '❌ Cancel', callback_data: `cancel_payment_${payment.id}` }
+          ],
+          [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
         ]
       }
     });
@@ -158,6 +160,47 @@ Send /cancel to stop.`, { parse_mode: 'Markdown' });
     if (data.startsWith('cancel_payment_')) {
       await bot.answerCallbackQuery(query.id, { text: 'Payment cancelled' });
       await bot.sendMessage(chatId, 'Payment cancelled. You can start a new payment anytime.');
+    }
+
+    if (data.startsWith('check_payment_')) {
+      const paymentId = data.replace('check_payment_', '');
+      const payment = await PaymentService.getPaymentById(paymentId);
+
+      if (!payment) {
+        await bot.answerCallbackQuery(query.id, { text: 'Payment not found' });
+        return bot.sendMessage(chatId, 'Sorry, I couldn\'t find that payment.');
+      }
+
+      const result = await PaymentService.verifyPayment(payment.paystackReference);
+      await bot.answerCallbackQuery(query.id, {
+        text: result.success ? 'Confirmed!' : 'Not confirmed yet'
+      });
+
+      if (result.success) {
+        if (result.alreadyProcessed) {
+          return bot.sendMessage(chatId,
+            '✅ This payment was already confirmed and completed.',
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [[{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]]
+              }
+            });
+        }
+        return sendPaymentConfirmation(chatId, result.payment);
+      }
+
+      return bot.sendMessage(chatId,
+        `⏳ Your payment (${payment.paystackReference}) is not confirmed yet.\n\nIt may still be processing. You will be notified automatically once it goes through — or check again in a minute.`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔄 Check Again', callback_data: `check_payment_${payment.id}` }],
+              [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
+            ]
+          }
+        });
     }
   } catch (error) {
     console.error('Payment callback error:', error);

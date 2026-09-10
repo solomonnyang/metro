@@ -9,6 +9,7 @@ import { profileCommand, profileCallback } from './commands/profile.js';
 import { showMainMenu, sendMainMenu } from './mainMenu.js';
 import { addAccount, handleInput, handleCallback } from './addAccount.js';
 import { getConversation, hasConversation } from './state.js';
+import { generateReceiptPdf } from '../services/receiptService.js';
 
 dotenv.config();
 
@@ -119,7 +120,7 @@ const registerCallbacks = () => {
         await bot.answerCallbackQuery(query.id);
       } else if (data === 'type_prepaid' || data === 'type_postpaid' || data.startsWith('disco_') || data === 'cancel_add_account') {
         await handleCallback(bot, query);
-      } else if (data.startsWith('pay_acc_') || data.startsWith('cancel_payment_')) {
+      } else if (data.startsWith('pay_acc_') || data.startsWith('cancel_payment_') || data.startsWith('check_payment_')) {
         await paymentCallback(bot, query);
       } else if (data === 'refresh_bills' || data.startsWith('pay_bill_')) {
         await viewBillsCallback(bot, query);
@@ -147,4 +148,40 @@ export const sendMessage = async (chatId, message, options = {}) => {
 export const sendDocument = async (chatId, buffer, options = {}) => {
   if (!bot) throw new Error('Bot not initialized');
   return await bot.sendDocument(chatId, buffer, {}, options);
+};
+
+export const sendPaymentConfirmation = async (chatId, payment) => {
+  if (!bot) throw new Error('Bot not initialized');
+
+  const token = payment.bill?.token;
+  const tokenText = token
+    ? `\n🔌 *Your Electricity Token:*\n\`${token}\`\n\n_Enter this token into your meter to credit your units._`
+    : '';
+
+  await bot.sendMessage(chatId, `
+✅ *Payment Successful!*
+
+💰 Amount: ${payment.amount} ${payment.currency}
+📋 Bill: \`${payment.bill?.billReference || 'N/A'}\`
+${tokenText}
+Your bill has been generated and paid. Thank you!
+        `, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
+      ]
+    }
+  });
+
+  try {
+    const receiptPdf = await generateReceiptPdf(payment);
+    await bot.sendDocument(chatId, receiptPdf, {}, {
+      filename: `receipt-${payment.paystackReference}.pdf`,
+      contentType: 'application/pdf',
+      caption: `Receipt ${payment.paystackReference}`
+    });
+  } catch (pdfError) {
+    console.error('Receipt generation failed:', pdfError);
+  }
 };
