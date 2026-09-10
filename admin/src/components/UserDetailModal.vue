@@ -22,7 +22,7 @@ const fullName = computed(() =>
 );
 
 const load = async () => {
-  detail.value = await getUserDetail(props.user.id);
+  detail.value = (await getUserDetail(props.user.id)).user;
 };
 
 const toggleActive = async () => {
