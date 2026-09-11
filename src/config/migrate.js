@@ -1,20 +1,21 @@
 import sequelize from './database.js';
-import { User, Account, Bill, Payment, Transaction } from '../models/index.js';
+import { User, Account, Bill, Payment, Transaction, Admin } from '../models/index.js';
 
 const migrate = async () => {
   try {
     console.log('🔄 Running database migrations...');
 
-    // Sync all models
-    await sequelize.sync({ force: true });
+    // Apply schema changes (create tables / alter columns). Never use force:true in production.
+    await sequelize.sync({ alter: true });
     
     console.log('✅ Migrations completed successfully!');
-    console.log('Tables created:');
+    console.log('Tables ensured:');
     console.log('  - users');
     console.log('  - accounts');
     console.log('  - bills');
     console.log('  - payments');
     console.log('  - transactions');
+    console.log('  - admins');
     
     process.exit(0);
   } catch (error) {

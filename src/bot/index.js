@@ -27,9 +27,20 @@ export const initBot = () => {
     throw new Error('TELEGRAM_BOT_TOKEN is not set');
   }
 
-  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+  const useWebhook = process.env.TELEGRAM_WEBHOOK === 'true';
 
-  console.log('🤖 Telegram bot initialized');
+  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
+    polling: !useWebhook
+  });
+
+  if (useWebhook) {
+    const webhookUrl = `${process.env.APP_URL}/api/telegram-webhook`;
+    bot.setWebHook(webhookUrl)
+      .then(() => console.log(`Telegram webhook set to ${webhookUrl}`))
+      .catch((error) => console.error('Failed to set Telegram webhook:', error.message));
+  } else {
+    console.log('Telegram bot polling enabled');
+  }
 
   registerCommands();
   registerCallbacks();

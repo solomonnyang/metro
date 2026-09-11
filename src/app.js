@@ -11,6 +11,7 @@ import paymentRoutes from './routes/payment.js';
 import adminRoutes from './routes/admin.js';
 import sequelize from './config/database.js';
 import { Admin } from './models/index.js';
+import { getBot } from './bot/index.js';
 
 dotenv.config();
 
@@ -31,6 +32,16 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Telegram bot webhook (used when TELEGRAM_WEBHOOK=true in production)
+app.post('/api/telegram-webhook', (req, res) => {
+  const bot = getBot();
+  if (!bot) {
+    return res.sendStatus(503);
+  }
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // Admin dashboard (Vue build)
 app.use('/admin', express.static(path.join(__dirname, '../admin/dist')));
@@ -81,9 +92,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ Database connected successfully');
 
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database synchronized');
-
+    // Schema is managed by `npm run migrate` (release phase in Procfile), not per-instance.
     await seedAdmin();
     console.log('✅ Admin store ready (credentials stored in the Admin table)');
 
