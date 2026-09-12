@@ -44,7 +44,15 @@ class PaymentService {
   }
 
   static async verifyPayment(reference) {
-    const verification = await PaystackService.verifyTransaction(reference);
+    let verification;
+    try {
+      verification = await PaystackService.verifyTransaction(reference);
+    } catch (error) {
+      if (error.status && error.status >= 400 && error.status < 500) {
+        return { success: false, error: 'Transaction not verifiable' };
+      }
+      throw error;
+    }
     
     if (verification.data.status === 'success') {
       const payment = await Payment.findOne({
@@ -59,34 +67,45 @@ class PaymentService {
         ]
       });
 
-      if (payment) {
-        await payment.update({
-          status: 'success',
-          paymentMethod: verification.data.authorization?.card_type,
-          paymentChannel: verification.data.channel,
-          gatewayResponse: verification.data,
-          paidAt: new Date(verification.data.paid_at)
-        });
+      if (!payment) return { success: false, error: 'Payment not found locally' };
 
-        const paidBill = await BillService.markAsPaid(payment.billId, reference);
-        payment.bill = paidBill;
+      if (payment.status === 'success') {
+        return { success: true, payment, alreadyProcessed: true };
+      }
 
-        await Transaction.create({
+      await payment.update({
+        status: 'success',
+        paymentMethod: verification.data.authorization?.card_type,
+        paymentChannel: verification.data.channel,
+        gatewayResponse: verification.data,
+        paidAt: new Date(verification.data.paid_at)
+      });
+
+      const paidBill = await BillService.markAsPaid(payment.billId, reference);
+      payment.bill = paidBill;
+
+      await Transaction.findOrCreate({
+        where: { reference },
+        defaults: {
           userId: payment.userId,
           type: 'bill_payment',
           amount: payment.amount,
           currency: payment.currency,
-          reference,
           status: 'completed',
           description: `Payment for bill ${payment.billId}`,
           metadata: {
             paymentId: payment.id,
             billId: payment.billId
           }
-        });
+        }
+      });
 
-        return { success: true, payment };
-      }
+      await payment.reload({ include: [
+        { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
+        { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
+      ] });
+
+      return { success: true, payment };
     }
 
     return { success: false, error: 'Payment verification failed' };

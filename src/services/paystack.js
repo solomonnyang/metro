@@ -16,10 +16,15 @@ class PaystackService {
   static async initializeTransaction(email, amount, metadata = {}) {
     try {
       const returnLink = `https://t.me/${process.env.BOT_USERNAME}`;
+      const channels = (process.env.PAYSTACK_CHANNELS || 'bank_transfer')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
       const response = await paystackApi.post('/transaction/initialize', {
         email,
         amount: Math.round(amount * 100),
         currency: 'NGN',
+        channels,
         callback_url: returnLink,
         metadata: {
           ...metadata,
@@ -33,12 +38,23 @@ class PaystackService {
   }
 
   static async verifyTransaction(reference) {
-    try {
-      const response = await paystackApi.get(`/transaction/verify/${reference}`);
-      return response.data;
-    } catch (error) {
-      throw new Error(`Paystack verification failed: ${error.message}`);
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const response = await paystackApi.get(`/transaction/verify/${reference}`);
+        return response.data;
+      } catch (error) {
+        const status = error.response?.status || null;
+        if (status && status < 500 && status !== 429) {
+          const e = new Error(`Paystack verification failed: ${error.message}`);
+          e.status = status;
+          throw e;
+        }
+        lastError = error;
+        if (attempt < 3) await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
     }
+    throw new Error(`Paystack verification failed: ${lastError.message}`);
   }
 
   static async createCustomer(email, firstName, lastName, phone) {

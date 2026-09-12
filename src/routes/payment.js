@@ -25,7 +25,7 @@ router.post('/webhook', async (req, res) => {
 
     const result = await PaymentService.handleWebhook(event, data);
 
-    if (event === 'charge.success' && result.success) {
+    if (event === 'charge.success' && result.success && !result.alreadyProcessed) {
       const payment = result.payment;
       if (payment && payment.user) {
         const token = payment.bill?.token;

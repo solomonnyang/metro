@@ -42,6 +42,34 @@ export const initBot = () => {
     console.log('Telegram bot polling enabled');
   }
 
+  let restartScheduled = false;
+  bot.on('polling_error', (error) => {
+    const isTransient = /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ESOCKETTIMEDOUT|ECONNREFUSED|ECONNRESET|fetch failed/i.test(
+      `${error?.code || ''} ${error?.message || ''}`
+    );
+
+    if (!isTransient) {
+      console.error('Fatal polling error (no auto-restart):', error?.message || error);
+      return;
+    }
+
+    console.warn('Transient polling error, will restart polling:', error?.message || error);
+
+    if (restartScheduled) return;
+    restartScheduled = true;
+
+    setTimeout(async () => {
+      restartScheduled = false;
+      try {
+        if (bot.isPolling()) await bot.stopPolling();
+        await bot.startPolling();
+        console.log('Telegram polling restarted');
+      } catch (retryError) {
+        console.error('Polling restart failed:', retryError?.message || retryError);
+      }
+    }, 15000);
+  });
+
   registerCommands();
   registerCallbacks();
 

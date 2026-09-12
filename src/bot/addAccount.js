@@ -126,8 +126,10 @@ Step 3 of 3 — Select your electricity company:`,
 • Company: ${distributionCompany}
 
 You can now view and pay bills for this meter.`,
-      { parse_mode: 'Markdown' });
-    return sendMainMenu(bot, chatId);
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '🏠 Back to Menu', callback_data: 'main_menu' }]] }
+      });
   }
 };
 
