@@ -12,7 +12,7 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
 - **Usage Statistics** - Monitor electricity usage and spending
 - **Webhook Notifications** - Real-time payment confirmations
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 18+ 
 - PostgreSQL 14+
