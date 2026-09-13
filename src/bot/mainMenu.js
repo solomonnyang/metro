@@ -1,5 +1,6 @@
-import { createInlineKeyboard } from '../utils/helpers.js';
+import { createInlineKeyboard, formatCurrency } from '../utils/helpers.js';
 import UserService from '../services/userService.js';
+import WalletService from '../services/walletService.js';
 
 export const getMainMenuKeyboard = async (userId) => {
   let accounts = [];
@@ -16,9 +17,11 @@ export const getMainMenuKeyboard = async (userId) => {
   } else {
     buttons = [
       { text: '📋 My Bills', data: 'menu_bills' },
-      { text: '💳 Pay Bill', data: 'menu_pay' },
+      { text: '⚡ Buy Electricity', data: 'menu_pay' },
+      { text: '👛 Wallet', data: 'menu_wallet' },
       { text: '🏠 Accounts', data: 'menu_accounts' },
       { text: '📊 History', data: 'menu_history' },
+      { text: '📈 Stats', data: 'menu_stats' },
       { text: '👤 Profile', data: 'menu_profile' },
       { text: '❓ Help', data: 'menu_help' }
     ];
@@ -28,7 +31,12 @@ export const getMainMenuKeyboard = async (userId) => {
 };
 
 export const sendMainMenu = async (bot, chatId, message, userId) => {
-  await bot.sendMessage(chatId, message || '🏠 *Main Menu*\n\nChoose an option below:', {
+  let text = message || '🏠 *Main Menu*\n\nChoose an option below:';
+  if (userId) {
+    const balance = await WalletService.getBalance(userId);
+    text += `\n\n👛 Wallet: ${formatCurrency(balance)}`;
+  }
+  await bot.sendMessage(chatId, text, {
     parse_mode: 'Markdown',
     reply_markup: await getMainMenuKeyboard(userId)
   });

@@ -31,6 +31,11 @@ const User = sequelize.define('User', {
   phone: {
     type: DataTypes.STRING
   },
+  walletBalance: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: false,
+    defaultValue: 0
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

@@ -1,5 +1,5 @@
 import sequelize from './database.js';
-import { User, Account, Bill, Payment, Transaction, Admin } from '../models/index.js';
+import { User, Account, Bill, Payment, Transaction, Admin, Conversation, WalletTransaction } from '../models/index.js';
 
 const migrate = async () => {
   try {
@@ -16,6 +16,8 @@ const migrate = async () => {
     console.log('  - payments');
     console.log('  - transactions');
     console.log('  - admins');
+    console.log('  - conversations');
+    console.log('  - wallet_transactions');
     
     process.exit(0);
   } catch (error) {

@@ -48,8 +48,8 @@ const lastPoint = computed(() => points.value[points.value.length - 1] || { x: 0
   <div class="card chart-card">
     <div class="head">
       <div>
-        <h3>Revenue Growth</h3>
-        <div class="sub">Monthly overview of completed payments</div>
+        <h3>Top-up Growth</h3>
+        <div class="sub">Monthly wallet top-ups via Paystack</div>
       </div>
       <div class="stat">
         <span class="amt">₦{{ sum.toLocaleString() }}</span>

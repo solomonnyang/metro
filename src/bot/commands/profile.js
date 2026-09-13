@@ -1,5 +1,7 @@
 import UserService from '../../services/userService.js';
 import { createInlineKeyboard, escapeMarkdown, buttonRow } from '../../utils/helpers.js';
+import { setConversation, getConversation, clearConversation } from '../state.js';
+import { sendMainMenu } from '../mainMenu.js';
 
 export const profileCommand = async (bot, msg) => {
   const chatId = msg.chat.id;
@@ -50,44 +52,67 @@ export const profileCallback = async (bot, query) => {
   const data = query.data;
 
   try {
-    if (data === 'update_email') {
+    if (data === 'update_email' || data === 'update_phone') {
+      const user = await UserService.getUserByTelegramId(query.from.id);
       await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId, 
-        '📧 Please enter your new email address:'
-      );
 
-      bot.once('message', async (response) => {
-        const email = response.text.trim();
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        
-        if (!emailRegex.test(email)) {
-          return bot.sendMessage(chatId, '❌ Invalid email format. Please try again.');
-        }
+      if (!user) {
+        return bot.sendMessage(chatId, 'Please send /start first.');
+      }
 
-        await UserService.updateUserEmail(query.from.id, email);
-        await bot.sendMessage(chatId, `✅ Email updated to: ${email}`);
-      });
-    }
+      const step = data === 'update_email' ? 'email' : 'phone';
+      await setConversation(chatId, { type: 'profile', step, userId: user.id });
 
-    if (data === 'update_phone') {
-      await bot.answerCallbackQuery(query.id);
-      await bot.sendMessage(chatId, 
-        '📱 Please enter your new phone number:'
-      );
+      const prompt = step === 'email'
+        ? '📧 *Update Email*\n\nSend your email address below.\n\nSend /cancel to stop.'
+        : '📱 *Update Phone*\n\nSend your phone number below.\n\nSend /cancel to stop.';
 
-      bot.once('message', async (response) => {
-        const phone = response.text.trim();
-        
-        if (phone.length < 10) {
-          return bot.sendMessage(chatId, '❌ Invalid phone number. Please try again.');
-        }
-
-        await UserService.updateUserPhone(query.from.id, phone);
-        await bot.sendMessage(chatId, `✅ Phone number updated to: ${phone}`);
+      return bot.sendMessage(chatId, prompt, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '⬅️ Cancel', callback_data: 'main_menu' }]] }
       });
     }
   } catch (error) {
     console.error('Profile callback error:', error);
+    await bot.sendMessage(chatId, 'Sorry, an error occurred. Please try again.');
+  }
+};
+
+export const handleProfileInput = async (bot, msg) => {
+  const chatId = msg.chat.id;
+  const conv = await getConversation(chatId);
+  if (!conv || conv.type !== 'profile') return;
+
+  const text = (msg.text || '').trim();
+
+  try {
+    if (conv.step === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(text)) {
+        return bot.sendMessage(chatId, '❌ That doesn\'t look like a valid email. Please send a valid email, or send /cancel.');
+      }
+
+      await UserService.updateUserEmail(msg.from.id, text);
+      await clearConversation(chatId);
+
+      const user = await UserService.getUserByTelegramId(msg.from.id);
+      return sendMainMenu(bot, chatId, `✅ Email updated to *${escapeMarkdown(text)}*.\n\nYou can now make payments.`, user?.id);
+    }
+
+    if (conv.step === 'phone') {
+      if (text.replace(/\D/g, '').length < 10) {
+        return bot.sendMessage(chatId, '❌ That doesn\'t look like a valid phone number. Please try again, or send /cancel.');
+      }
+
+      await UserService.updateUserPhone(msg.from.id, text);
+      await clearConversation(chatId);
+
+      const user = await UserService.getUserByTelegramId(msg.from.id);
+      return sendMainMenu(bot, chatId, `✅ Phone number updated to *${escapeMarkdown(text)}*.`, user?.id);
+    }
+  } catch (error) {
+    console.error('Profile input error:', error);
+    await clearConversation(chatId);
     await bot.sendMessage(chatId, 'Sorry, an error occurred. Please try again.');
   }
 };

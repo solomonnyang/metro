@@ -1,6 +1,7 @@
 import { Payment, Bill, User, Transaction, Account } from '../models/index.js';
 import BillService from './billService.js';
 import PaystackService from './paystack.js';
+import WalletService from './walletService.js';
 import { v4 as uuidv4 } from 'uuid';
 
 class PaymentService {
@@ -43,6 +44,38 @@ class PaymentService {
     };
   }
 
+  static async initiateTopup(userId, userEmail, amount) {
+    const value = Math.round((Number(amount || 0) + Number.EPSILON) * 100) / 100;
+    if (!(value > 0)) throw new Error('Invalid top-up amount');
+
+    const reference = `TOPUP-${Date.now()}-${uuidv4().slice(0, 8).toUpperCase()}`;
+
+    const payment = await Payment.create({
+      userId,
+      billId: null,
+      amount: value,
+      currency: 'NGN',
+      paystackReference: reference,
+      status: 'pending',
+      purpose: 'wallet_topup',
+      metadata: { purpose: 'wallet_topup' }
+    });
+
+    const paystackResponse = await PaystackService.initializeTransaction(userEmail, value, {
+      paymentId: payment.id,
+      userId,
+      purpose: 'wallet_topup'
+    });
+
+    await payment.update({ paystackReference: paystackResponse.data.reference });
+
+    return {
+      payment: { ...payment.toJSON(), paystackReference: paystackResponse.data.reference },
+      authorizationUrl: paystackResponse.data.authorization_url,
+      reference: paystackResponse.data.reference
+    };
+  }
+
   static async verifyPayment(reference) {
     let verification;
     try {
@@ -53,25 +86,29 @@ class PaymentService {
       }
       throw error;
     }
-    
-    if (verification.data.status === 'success') {
-      const payment = await Payment.findOne({
-        where: { paystackReference: reference },
-        include: [
-          { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
-          {
-            model: Bill,
-            as: 'bill',
-            include: [{ model: Account, as: 'account' }]
-          }
-        ]
+
+    if (verification.data.status !== 'success') {
+      return { success: false, error: 'Payment verification failed' };
+    }
+
+    const payment = await Payment.findOne({
+      where: { paystackReference: reference },
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
+        { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
+      ]
+    });
+
+    if (!payment) return { success: false, error: 'Payment not found locally' };
+    if (payment.status === 'success') return { success: true, payment, alreadyProcessed: true };
+
+    // Wallet top-up: credit the wallet (idempotent on reference).
+    if (payment.purpose === 'wallet_topup' || !payment.billId) {
+      const credit = await WalletService.creditTopup(payment.userId, payment.amount, {
+        reference: `TOPUP-${payment.paystackReference}`,
+        description: 'Wallet top-up',
+        metadata: { paymentId: payment.id, paystackReference: payment.paystackReference }
       });
-
-      if (!payment) return { success: false, error: 'Payment not found locally' };
-
-      if (payment.status === 'success') {
-        return { success: true, payment, alreadyProcessed: true };
-      }
 
       await payment.update({
         status: 'success',
@@ -81,34 +118,50 @@ class PaymentService {
         paidAt: new Date(verification.data.paid_at)
       });
 
-      const paidBill = await BillService.markAsPaid(payment.billId, reference);
-      payment.bill = paidBill;
-
-      await Transaction.findOrCreate({
-        where: { reference },
-        defaults: {
-          userId: payment.userId,
-          type: 'bill_payment',
-          amount: payment.amount,
-          currency: payment.currency,
-          status: 'completed',
-          description: `Payment for bill ${payment.billId}`,
-          metadata: {
-            paymentId: payment.id,
-            billId: payment.billId
-          }
-        }
+      await payment.reload({
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
+          { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
+        ]
       });
 
-      await payment.reload({ include: [
-        { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
-        { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
-      ] });
-
-      return { success: true, payment };
+      return { success: true, payment, walletBalance: credit.balance };
     }
 
-    return { success: false, error: 'Payment verification failed' };
+    // Legacy direct bill payment (kept for rows created before wallets).
+    await payment.update({
+      status: 'success',
+      paymentMethod: verification.data.authorization?.card_type,
+      paymentChannel: verification.data.channel,
+      gatewayResponse: verification.data,
+      paidAt: new Date(verification.data.paid_at)
+    });
+
+    const paidBill = await BillService.markAsPaid(payment.billId, reference);
+    payment.bill = paidBill;
+
+    await Transaction.findOrCreate({
+      where: { reference },
+      defaults: {
+        userId: payment.userId,
+        type: 'bill_payment',
+        amount: payment.amount,
+        currency: payment.currency,
+        status: 'completed',
+        description: `Payment for bill ${payment.billId}`,
+        metadata: {
+          paymentId: payment.id,
+          billId: payment.billId
+        }
+      }
+    });
+
+    await payment.reload({ include: [
+      { model: User, as: 'user', attributes: ['id', 'telegramId', 'email', 'firstName', 'lastName'] },
+      { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
+    ] });
+
+    return { success: true, payment };
   }
 
   static async getPaymentHistory(userId, limit = 10, offset = 0) {
@@ -133,6 +186,69 @@ class PaymentService {
         { model: Bill, as: 'bill' }
       ]
     });
+  }
+
+  static async getPaymentById(paymentId) {
+    return await Payment.findOne({
+      where: { id: paymentId },
+      include: [
+        { model: Bill, as: 'bill', include: [{ model: Account, as: 'account' }] }
+      ]
+    });
+  }
+
+  static async cancelPayment(paymentId, userId) {
+    const payment = await Payment.findByPk(paymentId, {
+      include: [{ model: Bill, as: 'bill' }]
+    });
+
+    if (!payment) return { success: false, error: 'Payment not found' };
+    if (userId && payment.userId !== userId) return { success: false, error: 'Not authorized' };
+    if (payment.status === 'success') return { success: false, error: 'This payment is already completed.' };
+
+    await payment.update({
+      status: 'failed',
+      metadata: {
+        ...(payment.metadata || {}),
+        cancelled: true,
+        cancelledAt: new Date().toISOString()
+      }
+    });
+
+    if (payment.bill && payment.bill.status === 'pending') {
+      await payment.bill.update({ status: 'cancelled' });
+    }
+
+    return { success: true, payment };
+  }
+
+  static async cancelPendingForAccount(userId, accountId) {
+    const pending = await Payment.findAll({
+      where: { userId, status: 'pending' },
+      include: [{
+        model: Bill,
+        as: 'bill',
+        where: { accountId, status: 'pending' },
+        required: true
+      }]
+    });
+
+    for (const payment of pending) {
+      await payment.update({
+        status: 'failed',
+        metadata: {
+          ...(payment.metadata || {}),
+          cancelled: true,
+          superseded: true,
+          cancelledAt: new Date().toISOString()
+        }
+      });
+      if (payment.bill) {
+        await payment.bill.update({ status: 'cancelled' });
+      }
+    }
+
+    return { cancelled: pending.length };
   }
 
   static async handleWebhook(event, data) {

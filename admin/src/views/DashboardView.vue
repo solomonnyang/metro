@@ -62,12 +62,12 @@ watch(refreshSeq, loadStats);
       <StatCard
         :icon="Wallet"
         color="info"
-        label="Revenue"
-        sub="From completed payments"
+        label="Wallet top-ups"
+        sub="Funds added via Paystack"
         :value="naira(stats.revenue)"
         :trend="revenuePct() !== null ? `${revenuePct() > 0 ? '+' : ''}${revenuePct()}%` : null"
         :trend-up="(revenuePct() || 0) >= 0"
-        :foot="`vs ${revenueYoy()}`"
+        :foot="`${naira(stats.walletLiabilities)} in wallets`"
       />
     </div>
 

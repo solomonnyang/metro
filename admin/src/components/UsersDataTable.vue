@@ -78,6 +78,7 @@ const confirmRemove = (u) => {
           <th>Contact</th>
           <th>Meters</th>
           <th>Payments</th>
+          <th>Wallet</th>
           <th>Total spent</th>
           <th>Status</th>
           <th>Joined</th>
@@ -107,6 +108,7 @@ const confirmRemove = (u) => {
           </td>
           <td class="num">{{ u.accountCount }}</td>
           <td class="num">{{ u.paymentCount }}</td>
+          <td class="wallet">{{ naira(u.walletBalance) }}</td>
           <td class="spent">{{ naira(u.totalSpent) }}</td>
           <td>
             <span class="badge" :class="u.isActive ? 'success' : 'danger'">
@@ -227,6 +229,7 @@ tr:hover td { background: #fbfbfd; }
 .cnt-sub { color: var(--muted); font-size: 11.5px; }
 .num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
 .spent { color: var(--primary); font-weight: 700; }
+.wallet { color: var(--success); font-weight: 700; font-variant-numeric: tabular-nums; }
 .muted-txt { color: var(--muted); font-size: 12px; }
 
 .foot {

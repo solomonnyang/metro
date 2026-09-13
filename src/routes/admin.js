@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import sequelize from '../config/database.js';
-import { User, Account, Bill, Payment, Transaction, Admin } from '../models/index.js';
+import { User, Account, Bill, Payment, Transaction, Admin, WalletTransaction } from '../models/index.js';
 
 const router = express.Router();
 
@@ -44,8 +44,8 @@ router.post('/login', async (req, res) => {
 });
 
 const isWebhookSecretConfigured = () => {
-  const s = process.env.PAYSTACK_WEBHOOK_SECRET || '';
-  return s !== '' && s !== 'set_from_paystack_dashboard';
+  const s = process.env.PAYSTACK_SECRET_KEY || '';
+  return s.startsWith('sk_');
 };
 
 router.get('/config', requireAdmin, async (req, res) => {
@@ -144,7 +144,9 @@ const [
       paidBills,
       totalPayments,
       successfulPayments,
+      totalTopups,
       revenue,
+      walletLiabilities,
       revenueByMonth,
       recentPayments
     ] = await Promise.all([
@@ -155,9 +157,11 @@ const [
       Bill.count({ where: { status: 'paid' } }),
       Payment.count(),
       Payment.count({ where: { status: 'success' } }),
-      Payment.sum('amount', { where: { status: 'success' }, plain: true }).then((r) => Number(r) || 0),
+      Payment.count({ where: { status: 'success', purpose: 'wallet_topup' } }),
+      Payment.sum('amount', { where: { status: 'success', purpose: 'wallet_topup' }, plain: true }).then((r) => Number(r) || 0),
+      User.sum('walletBalance', { plain: true }).then((r) => Number(r) || 0),
       Payment.findAll({
-        where: { status: 'success', paidAt: { [Op.ne]: null } },
+        where: { status: 'success', purpose: 'wallet_topup', paidAt: { [Op.ne]: null } },
         attributes: [
           [sequelize.fn('date_trunc', 'month', sequelize.col('paidAt')), 'month'],
           [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('amount')), 0), 'total']
@@ -203,7 +207,9 @@ const [
         paidBills,
         totalPayments,
         successfulPayments,
+        totalTopups,
         revenue,
+        walletLiabilities,
         revenueByMonth: { labels, totals },
         recentPayments: recentPayments.map((p) => ({
           id: p.id,
@@ -211,6 +217,7 @@ const [
           amount: p.amount,
           currency: p.currency,
           status: p.status,
+          purpose: p.purpose || 'bill_payment',
           createdAt: p.createdAt,
           userName: [p.user?.firstName, p.user?.lastName].filter(Boolean).join(' ') || p.user?.username || 'Unknown',
           username: p.user?.username || '',
@@ -249,11 +256,11 @@ router.get('/users', requireAdmin, async (req, res) => {
       order: [['createdAt', 'DESC']],
       limit,
       offset,
-      attributes: ['id', 'telegramId', 'firstName', 'lastName', 'username', 'email', 'phone', 'isActive', 'createdAt', 'lastInteraction']
+      attributes: ['id', 'telegramId', 'firstName', 'lastName', 'username', 'email', 'phone', 'walletBalance', 'isActive', 'createdAt', 'lastInteraction']
     });
 
     const userIds = rows.map((u) => u.id);
-    const [accountCounts, paymentCounts, spendMap] = await Promise.all([
+    const [accountCounts, paymentCounts, topupMap, spendMap] = await Promise.all([
       userIds.length
         ? Account.findAll({ where: { userId: { [Op.in]: userIds } }, attributes: ['userId', [sequelize.fn('COUNT', sequelize.col('id')), 'cnt']], group: ['userId'], raw: true })
         : [],
@@ -262,7 +269,15 @@ router.get('/users', requireAdmin, async (req, res) => {
         : [],
       userIds.length
         ? Payment.findAll({
-            where: { userId: { [Op.in]: userIds }, status: 'success' },
+            where: { userId: { [Op.in]: userIds }, status: 'success', purpose: 'wallet_topup' },
+            attributes: ['userId', [sequelize.fn('SUM', sequelize.col('amount')), 'total']],
+            group: ['userId'],
+            raw: true
+          })
+        : [],
+      userIds.length
+        ? WalletTransaction.findAll({
+            where: { userId: { [Op.in]: userIds }, direction: 'debit', status: 'completed' },
             attributes: ['userId', [sequelize.fn('SUM', sequelize.col('amount')), 'total']],
             group: ['userId'],
             raw: true
@@ -272,14 +287,17 @@ router.get('/users', requireAdmin, async (req, res) => {
 
     const accountMap = Object.fromEntries(accountCounts.map((r) => [r.userId, Number(r.cnt)]));
     const paymentMap = Object.fromEntries(paymentCounts.map((r) => [r.userId, Number(r.cnt)]));
+    const topupTotal = Object.fromEntries(topupMap.map((r) => [r.userId, Number(r.total)]));
     const spendTotal = Object.fromEntries(spendMap.map((r) => [r.userId, Number(r.total)]));
 
     res.json({
       success: true,
       users: rows.map((u) => ({
         ...u.toJSON(),
+        walletBalance: Number(u.walletBalance) || 0,
         accountCount: accountMap[u.id] || 0,
         paymentCount: paymentMap[u.id] || 0,
+        totalToppedUp: topupTotal[u.id] || 0,
         totalSpent: spendTotal[u.id] || 0
       })),
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) }
@@ -295,6 +313,13 @@ router.get('/users/:id', requireAdmin, async (req, res) => {
     const user = await User.findByPk(req.params.id, {
       include: [
         { model: Account, as: 'accounts' },
+        {
+          model: WalletTransaction,
+          as: 'walletTransactions',
+          separate: true,
+          order: [['createdAt', 'DESC']],
+          limit: 20
+        },
         {
           model: Payment,
           as: 'payments',
@@ -343,6 +368,7 @@ router.delete('/users/:id', requireAdmin, async (req, res) => {
     const accountIds = accounts.map((a) => a.id);
 
     await Transaction.destroy({ where: { userId: user.id } });
+    await WalletTransaction.destroy({ where: { userId: user.id } });
     await Payment.destroy({ where: { userId: user.id } });
     if (accountIds.length) {
       await Bill.destroy({ where: { accountId: { [Op.in]: accountIds } } });

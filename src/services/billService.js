@@ -49,9 +49,17 @@ class BillService {
     });
   }
 
-  static async markAsPaid(billId, paymentReference) {
+  static async getBillById(billId, options = {}) {
+    return await Bill.findByPk(billId, {
+      include: [{ model: Account, as: 'account' }],
+      ...options
+    });
+  }
+
+  static async markAsPaid(billId, paymentReference, options = {}) {
     const bill = await Bill.findByPk(billId, {
-      include: [{ model: Account, as: 'account' }]
+      include: [{ model: Account, as: 'account' }],
+      ...options
     });
 
     let token = null;
@@ -63,7 +71,7 @@ class BillService {
       status: 'paid',
       paymentReference,
       token
-    });
+    }, options);
 
     return bill;
   }

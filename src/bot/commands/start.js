@@ -39,17 +39,18 @@ export const helpCommand = async (bot, msg) => {
   const helpMessage = `
 📖 *Help*
 
-Use the menu buttons to:
-• 📋 View your bills
-• 💳 Pay a bill via Paystack
-• 🏠 Manage your meter accounts
-• 📊 See payment history
-• 👤 Update your profile
+Tap a button below or use a command:
 
-Commands: /start - Main menu
+📋 /bills — View and pay pending bills
+⚡ /pay — Buy electricity (top up a meter)
+🏠 /accounts — Manage your meters
+📊 /history — Payment history
+👤 /profile — Update your email or phone
+❓ /help — Show this help
 
-Contact support if you need help.
+💡 Set your email in 👤 Profile before paying — we use it to create the Paystack payment.
     `;
 
-  await sendMainMenu(bot, chatId, helpMessage);
+  const user = await UserService.getUserByTelegramId(msg.from.id);
+  await sendMainMenu(bot, chatId, helpMessage, user?.id);
 };

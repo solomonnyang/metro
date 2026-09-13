@@ -5,10 +5,12 @@ import { billsCommand, viewBillsCallback } from './commands/bills.js';
 import { accountsCommand, accountsCallback } from './commands/accounts.js';
 import { payCommand, paymentCallback, handlePayInput } from './commands/payment.js';
 import { historyCommand, statsCommand } from './commands/history.js';
-import { profileCommand, profileCallback } from './commands/profile.js';
+import { profileCommand, profileCallback, handleProfileInput } from './commands/profile.js';
+import { walletCommand, walletCallback, handleWalletInput } from './commands/wallet.js';
 import { showMainMenu, sendMainMenu } from './mainMenu.js';
 import { addAccount, handleInput, handleCallback } from './addAccount.js';
-import { getConversation, hasConversation } from './state.js';
+import { getConversation, hasConversation, clearConversation } from './state.js';
+import UserService from '../services/userService.js';
 
 dotenv.config();
 
@@ -92,14 +94,42 @@ const registerCommands = () => {
   bot.onText(/\/history/, (msg) => historyCommand(bot, msg));
   bot.onText(/\/stats/, (msg) => statsCommand(bot, msg));
   bot.onText(/\/profile/, (msg) => profileCommand(bot, msg));
+  bot.onText(/\/wallet/, (msg) => walletCommand(bot, msg));
 
-  bot.on('message', (msg) => {
-    if (msg.text && hasConversation(msg.chat.id)) {
-      const conv = getConversation(msg.chat.id);
-      const handler = conv.type === 'pay' ? handlePayInput : handleInput;
-      handler(bot, msg).catch((error) => {
-        console.error('Conversation input error:', error);
-      });
+  bot.on('message', async (msg) => {
+    if (!msg.text) return;
+    const chatId = msg.chat.id;
+
+    try {
+      if (!(await hasConversation(chatId))) return;
+
+      // Commands are handled by their own onText handlers; we only need to
+      // reset/handle the active conversation here.
+      if (msg.text.startsWith('/')) {
+        if (msg.text === '/cancel') {
+          await clearConversation(chatId);
+          const user = await UserService.getUserByTelegramId(msg.from.id);
+          await sendMainMenu(bot, chatId, '❌ Cancelled. Back to the main menu.', user?.id);
+        } else if (msg.text === '/start') {
+          await clearConversation(chatId);
+        }
+        return;
+      }
+
+      const conv = await getConversation(chatId);
+      if (!conv) return;
+
+      if (conv.type === 'pay') {
+        await handlePayInput(bot, msg);
+      } else if (conv.type === 'profile') {
+        await handleProfileInput(bot, msg);
+      } else if (conv.type === 'wallet') {
+        await handleWalletInput(bot, msg);
+      } else {
+        await handleInput(bot, msg);
+      }
+    } catch (error) {
+      console.error('Conversation input error:', error);
     }
   });
 
@@ -119,6 +149,12 @@ const registerCallbacks = () => {
         await accountsCommand(bot, fakeMsg(query));
       } else if (data === 'menu_history') {
         await historyCommand(bot, fakeMsg(query));
+      } else if (data === 'menu_stats') {
+        await statsCommand(bot, fakeMsg(query));
+      } else if (data === 'menu_wallet') {
+        await walletCommand(bot, fakeMsg(query));
+      } else if (data.startsWith('wallet_')) {
+        await walletCallback(bot, query);
       } else if (data === 'menu_profile') {
         await profileCommand(bot, fakeMsg(query));
       } else if (data === 'menu_help') {
@@ -130,9 +166,9 @@ const registerCallbacks = () => {
         await bot.answerCallbackQuery(query.id);
       } else if (data === 'type_prepaid' || data === 'type_postpaid' || data.startsWith('disco_') || data === 'cancel_add_account') {
         await handleCallback(bot, query);
-      } else if (data.startsWith('pay_acc_') || data.startsWith('cancel_payment_')) {
+      } else if (data.startsWith('pay_acc_') || data.startsWith('confirm_pay_') || data === 'cancel_pay' || data.startsWith('cancel_payment_') || data.startsWith('check_payment_')) {
         await paymentCallback(bot, query);
-      } else if (data === 'refresh_bills' || data.startsWith('pay_bill_')) {
+      } else if (data === 'refresh_bills' || data.startsWith('pay_bill_') || data.startsWith('confirm_bill_')) {
         await viewBillsCallback(bot, query);
       } else if (data === 'refresh_accounts' || data.startsWith('remove_account_')) {
         await accountsCallback(bot, query);

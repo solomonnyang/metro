@@ -15,7 +15,7 @@ const fmtDate = (d) =>
     <div class="head">
       <div>
         <h3>Recent Transactions</h3>
-        <div class="sub">Latest successful payments</div>
+        <div class="sub">Latest successful payments & top-ups</div>
       </div>
       <span class="badge success">Live</span>
     </div>

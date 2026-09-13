@@ -72,6 +72,7 @@ const totalSize = computed(() =>
       <thead>
         <tr>
           <th>Payment</th>
+          <th>Type</th>
           <th>User</th>
           <th>Meter</th>
           <th>Token</th>
@@ -85,6 +86,11 @@ const totalSize = computed(() =>
           <td>
             <div class="mono ref">{{ p.paystackReference }}</div>
             <div class="muted-txt">{{ p.bill?.billReference || '—' }}</div>
+          </td>
+          <td>
+            <span class="badge" :class="p.purpose === 'wallet_topup' ? 'info' : 'primary'">
+              {{ p.purpose === 'wallet_topup' ? 'Top-up' : 'Bill' }}
+            </span>
           </td>
           <td>
             <div class="user-cell">

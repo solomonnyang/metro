@@ -4,6 +4,8 @@ import Bill from './Bill.js';
 import Payment from './Payment.js';
 import Transaction from './Transaction.js';
 import Admin from './Admin.js';
+import Conversation from './Conversation.js';
+import WalletTransaction from './WalletTransaction.js';
 
 User.hasMany(Account, { foreignKey: 'userId', as: 'accounts' });
 Account.belongsTo(User, { foreignKey: 'userId', as: 'user' });
@@ -20,11 +22,16 @@ Payment.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(Transaction, { foreignKey: 'userId', as: 'transactions' });
 Transaction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+User.hasMany(WalletTransaction, { foreignKey: 'userId', as: 'walletTransactions' });
+WalletTransaction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 export {
   User,
   Account,
   Bill,
   Payment,
   Transaction,
-  Admin
+  Admin,
+  Conversation,
+  WalletTransaction
 };

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, computed, onMounted } from 'vue';
-import { X, Phone, Mail, Hash, CalendarDays, Activity, UserCheck, UserX, Trash2, CheckCircle2 } from 'lucide-vue-next';
+import { X, Phone, Mail, Hash, CalendarDays, Activity, UserCheck, UserX, Trash2, CheckCircle2, Wallet } from 'lucide-vue-next';
 import { getUserDetail, patchUser, deleteUser } from '../api.js';
 import { initials, avatarColor } from '../utils/avatar.js';
 
@@ -76,7 +76,7 @@ watch(() => props.user.id, load);
                 {{ detail.isActive ? 'Active' : 'Inactive' }}
               </span>
               <span class="badge primary">{{ (detail.accounts || []).length }} meters</span>
-              <span class="badge info">{{ (detail.payments || []).length }} payments</span>
+              <span class="badge success">{{ naira(detail.walletBalance) }} wallet</span>
             </div>
           </div>
         </div>
@@ -87,6 +87,7 @@ watch(() => props.user.id, load);
             <div class="kv"><Hash :size="14" :stroke-width="2" /><span><b>Telegram ID</b>{{ detail.telegramId }}</span></div>
             <div class="kv"><Mail :size="14" :stroke-width="2" /><span><b>Email</b>{{ detail.email || '—' }}</span></div>
             <div class="kv"><Phone :size="14" :stroke-width="2" /><span><b>Phone</b>{{ detail.phone || '—' }}</span></div>
+            <div class="kv"><Wallet :size="14" :stroke-width="2" /><span><b>Wallet</b>{{ naira(detail.walletBalance) }}</span></div>
             <div class="kv"><CalendarDays :size="14" :stroke-width="2" /><span><b>Joined</b>{{ fmtDate(detail.createdAt) }}</span></div>
             <div class="kv"><Activity :size="14" :stroke-width="2" /><span><b>Last activity</b>{{ fmtDate(detail.lastInteraction) }}</span></div>
           </div>
@@ -116,15 +117,34 @@ watch(() => props.user.id, load);
           <p v-if="!detail.payments || detail.payments.length === 0" class="empty">No payments yet</p>
           <table v-else class="mini-table">
             <thead>
-              <tr><th>Reference</th><th>Amount</th><th>Status</th><th>Token</th><th>Date</th></tr>
+              <tr><th>Type</th><th>Reference</th><th>Amount</th><th>Status</th><th>Token</th><th>Date</th></tr>
             </thead>
             <tbody>
               <tr v-for="p in detail.payments" :key="p.id">
+                <td>{{ p.purpose === 'wallet_topup' ? 'Top-up' : 'Bill' }}</td>
                 <td class="mono py">{{ p.paystackReference }}</td>
                 <td class="amt">{{ naira(p.amount) }}</td>
                 <td><span class="badge" :class="ok(p.status) ? 'success' : 'danger'">{{ p.status }}</span></td>
                 <td class="tkn">{{ p.bill?.token || '—' }}</td>
                 <td class="muted-txt">{{ fmtDate(p.createdAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mod-col">
+          <h4>Wallet activity ({{ (detail.walletTransactions || []).length }})</h4>
+          <p v-if="!detail.walletTransactions || detail.walletTransactions.length === 0" class="empty">No wallet activity yet</p>
+          <table v-else class="mini-table">
+            <thead>
+              <tr><th>Type</th><th>Amount</th><th>Balance after</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in detail.walletTransactions" :key="t.id">
+                <td class="cap">{{ t.direction === 'credit' ? 'Credit' : 'Debit' }} · {{ String(t.type).replace('_', ' ') }}</td>
+                <td :class="t.direction === 'credit' ? 'amt' : 'debit-amt'">{{ t.direction === 'credit' ? '+' : '−' }}{{ naira(t.amount) }}</td>
+                <td class="muted-txt">{{ naira(t.balanceAfter) }}</td>
+                <td class="muted-txt">{{ fmtDate(t.createdAt) }}</td>
               </tr>
             </tbody>
           </table>
@@ -205,6 +225,7 @@ h3 { font-size: 19px; font-weight: 700; color: var(--heading); }
 .mono { font-variant-numeric: tabular-nums; color: var(--primary); font-weight: 600; }
 .mono.py { color: var(--text); }
 .amt { color: var(--success); font-weight: 700; }
+.debit-amt { color: #e5484d; font-weight: 700; }
 .tkn { color: var(--muted); font-size: 11.5px; }
 .cap { text-transform: capitalize; }
 .muted-txt { color: var(--muted); font-size: 11.5px; }

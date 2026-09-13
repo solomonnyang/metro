@@ -17,11 +17,16 @@ const Payment = sequelize.define('Payment', {
   },
   billId: {
     type: DataTypes.UUID,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'bills',
       key: 'id'
     }
+  },
+  purpose: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'bill_payment'
   },
   amount: {
     type: DataTypes.DECIMAL(10, 2),

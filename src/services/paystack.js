@@ -12,6 +12,12 @@ const paystackApi = axios.create({
   }
 });
 
+const safeCompare = (a, b) => {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+};
+
 class PaystackService {
   static async initializeTransaction(email, amount, metadata = {}) {
     try {
@@ -94,25 +100,30 @@ class PaystackService {
     }
   }
 
+  // Paystack signs webhook payloads with your SECRET KEY (HMAC SHA512),
+  // not a separate webhook secret.
+  static webhookSecret() {
+    return process.env.PAYSTACK_SECRET_KEY || '';
+  }
+
   static verifyWebhookSignature(payload, signature) {
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_WEBHOOK_SECRET)
+      .createHmac('sha512', this.webhookSecret())
       .update(JSON.stringify(payload))
       .digest('hex');
-    return hash === signature;
+    return safeCompare(hash, signature);
   }
 
   static verifyWebhookSignatureRaw(rawPayload, signature) {
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_WEBHOOK_SECRET)
+      .createHmac('sha512', this.webhookSecret())
       .update(rawPayload)
       .digest('hex');
-    return hash === signature;
+    return safeCompare(hash, signature);
   }
 
   static isWebhookSecretConfigured() {
-    const secret = process.env.PAYSTACK_WEBHOOK_SECRET;
-    return !!secret && !secret.startsWith('set_from_paystack_dashboard');
+    return this.webhookSecret().startsWith('sk_');
   }
 
   static async listTransactions(page = 1, perPage = 50) {

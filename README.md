@@ -39,8 +39,7 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
    
    Edit `.env` with your credentials:
    - `TELEGRAM_BOT_TOKEN` - Your Telegram bot token
-   - `PAYSTACK_SECRET_KEY` - Your Paystack secret key
-   - `PAYSTACK_WEBHOOK_SECRET` - Your Paystack webhook secret
+   - `PAYSTACK_SECRET_KEY` - Your Paystack secret key (also verifies webhook signatures)
    - Database credentials
 
 4. **Set up database**

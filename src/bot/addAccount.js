@@ -25,13 +25,15 @@ const typeKeyboard = () => ({
 });
 
 const askMeterNumber = async (bot, chatId) => {
-  setConversation(chatId, { type: 'add_account', step: 'meter' });
+  await setConversation(chatId, { type: 'add_account', step: 'meter' });
   await bot.sendMessage(chatId,
 `📝 *Add Your Meter*
 
 Step 1 of 3 — Type your *meter number* below.
 
 _It\'s the 6-11 digit number on your electric meter. Example: \`81004567901\`_
+
+Send /cancel to stop.
 `, { parse_mode: 'Markdown' });
 };
 
@@ -42,16 +44,11 @@ const addAccount = async (bot, msg) => {
 
 const handleInput = async (bot, msg) => {
   const chatId = msg.chat.id;
-  const conv = getConversation(chatId);
-  if (!conv) return;
-
-  if (msg.text === '/cancel' || msg.text === '/start') {
-    clearConversation(chatId);
-    return bot.sendMessage(chatId, 'Operation cancelled.');
-  }
+  const conv = await getConversation(chatId);
+  if (!conv || conv.type !== 'add_account') return;
 
   if (conv.step === 'meter') {
-    const meterNumber = msg.text.trim();
+    const meterNumber = (msg.text || '').trim();
 
     if (!/^[0-9]{6,11}$/.test(meterNumber)) {
       return bot.sendMessage(chatId, '❌ That doesn\'t look like a valid meter number. Please type 6-11 digits only.');
@@ -62,8 +59,8 @@ const handleInput = async (bot, msg) => {
       return bot.sendMessage(chatId, '❌ This meter number is already registered. Please try a different one.');
     }
 
-    conv.meterNumber = meterNumber;
-    conv.step = 'type';
+    await setConversation(chatId, { ...conv, meterNumber, step: 'type' });
+
     await bot.sendMessage(chatId, 
 `✅ Meter number: \`${meterNumber}\`
 
@@ -75,23 +72,23 @@ Step 2 of 3 — Is it *prepaid* or *postpaid*?`,
 const handleCallback = async (bot, query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
-  const conv = getConversation(chatId);
+  const conv = await getConversation(chatId);
 
   if (data === 'cancel_add_account') {
-    clearConversation(chatId);
+    await clearConversation(chatId);
     await bot.answerCallbackQuery(query.id, { text: 'Cancelled' });
     const cancelUser = await UserService.getUserByTelegramId(query.from.id);
-    return sendMainMenu(bot, chatId, 'Operation cancelled. Back to the main menu.', cancelUser?.id);
+    return sendMainMenu(bot, chatId, '❌ Cancelled. Back to the main menu.', cancelUser?.id);
   }
 
-  if (!conv) return;
+  if (!conv || conv.type !== 'add_account') return;
 
   if (conv.step === 'type' && (data === 'type_prepaid' || data === 'type_postpaid')) {
-    conv.accountType = data.replace('type_', '');
-    conv.step = 'disco';
+    const accountType = data.replace('type_', '');
+    await setConversation(chatId, { ...conv, accountType, step: 'disco' });
     await bot.editMessageText(
 `✅ Meter: \`${conv.meterNumber}\`
-✅ Type: ${conv.accountType.toUpperCase()}
+✅ Type: ${accountType.toUpperCase()}
 
 Step 3 of 3 — Select your electricity company:`,
       { chat_id: chatId, message_id: query.message.message_id, parse_mode: 'Markdown', reply_markup: discoKeyboard() }
@@ -105,7 +102,7 @@ Step 3 of 3 — Select your electricity company:`,
 
     const user = await UserService.getUserByTelegramId(query.from.id);
     if (!user) {
-      clearConversation(chatId);
+      await clearConversation(chatId);
       return bot.sendMessage(chatId, 'Please send /start first.');
     }
 
@@ -116,7 +113,7 @@ Step 3 of 3 — Select your electricity company:`,
       distributionCompany
     });
 
-    clearConversation(chatId);
+    await clearConversation(chatId);
     await bot.answerCallbackQuery(query.id, { text: 'Account added!' });
     await bot.sendMessage(chatId,
 `🎉 *Meter Added Successfully!*

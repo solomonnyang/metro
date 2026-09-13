@@ -4,6 +4,7 @@ import PaystackService from '../services/paystack.js';
 import { generateReceiptPdf } from '../services/receiptService.js';
 import { sendMessage, sendDocument } from '../bot/index.js';
 import { User } from '../models/index.js';
+import { formatCurrency, escapeMarkdown } from '../utils/helpers.js';
 
 const router = express.Router();
 
@@ -28,39 +29,74 @@ router.post('/webhook', async (req, res) => {
     if (event === 'charge.success' && result.success && !result.alreadyProcessed) {
       const payment = result.payment;
       if (payment && payment.user) {
-        const token = payment.bill?.token;
-        const tokenText = token
-          ? `\n🔌 *Your Electricity Token:*\n\`${token}\`\n\n_Enter this token into your meter to credit your units._`
-          : '';
+        const isTopup = payment.purpose === 'wallet_topup' || !payment.billId;
 
-        const message = `
+        if (isTopup) {
+          const balance = result.walletBalance;
+          await sendMessage(payment.user.telegramId,
+            `✅ *Wallet topped up!*\n\n💰 Amount: ${formatCurrency(payment.amount)}${balance != null ? `\n👛 New balance: ${formatCurrency(balance)}` : ''}\n\nYou can now pay your bills from your wallet.`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '👛 Wallet', callback_data: 'menu_wallet' }],
+                  [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
+                ]
+              }
+            });
+        } else {
+          const token = payment.bill?.token;
+          const tokenText = token
+            ? `\n🔌 *Your Electricity Token:*\n\`${token}\`\n\n_Enter this token into your meter to credit your units._`
+            : '';
+
+          const message = `
 ✅ *Payment Successful!*
 
 💰 Amount: ${payment.amount} ${payment.currency}
 📋 Bill: \`${payment.bill?.billReference || 'N/A'}\`
 ${tokenText}
 Your bill has been generated and paid. Thank you!
-        `;
+          `;
 
-        await sendMessage(payment.user.telegramId, message, {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
-            ]
-          }
-        });
-
-        try {
-          const receiptPdf = await generateReceiptPdf(payment);
-          await sendDocument(payment.user.telegramId, receiptPdf, {
-            filename: `receipt-${payment.paystackReference}.pdf`,
-            contentType: 'application/pdf',
-            caption: `🧾 Receipt ${payment.paystackReference}`
+          await sendMessage(payment.user.telegramId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
+              ]
+            }
           });
-        } catch (pdfError) {
-          console.error('Receipt generation failed:', pdfError);
+
+          try {
+            const receiptPdf = await generateReceiptPdf(payment);
+            await sendDocument(payment.user.telegramId, receiptPdf, {
+              filename: `receipt-${payment.paystackReference}.pdf`,
+              contentType: 'application/pdf',
+              caption: `🧾 Receipt ${payment.paystackReference}`
+            });
+          } catch (pdfError) {
+            console.error('Receipt generation failed:', pdfError);
+          }
         }
+      }
+    }
+
+    if (event === 'charge.failed') {
+      const failed = await PaymentService.getPaymentByReference(data.reference);
+      if (failed?.user) {
+        await sendMessage(failed.user.telegramId,
+          `❌ *Payment failed*\n\n💰 Amount: ${formatCurrency(failed.amount)}\n🔖 Ref: \`${escapeMarkdown(failed.paystackReference)}\`\n\nNo charge was made. You can try again from the menu.`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔁 Try Again', callback_data: 'menu_pay' }],
+                [{ text: '⬅️ Back to Menu', callback_data: 'main_menu' }]
+              ]
+            }
+          }
+        );
       }
     }
 
