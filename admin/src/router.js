@@ -8,7 +8,9 @@ import SettingsView from './views/SettingsView.vue';
 import { isAuthenticated } from './api.js';
 
 const router = createRouter({
-  history: createWebHistory(),
+  // Matches the Express mount point and the Vite `base`, so the router
+  // resolves /admin/login instead of looking for /login at the root.
+  history: createWebHistory('/admin/'),
   routes: [
     { path: '/login', name: 'login', component: LoginView },
     {

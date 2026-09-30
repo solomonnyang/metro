@@ -1,22 +1,23 @@
 # ⚡ Electricity Bill Payment Telegram Bot
 
-A Telegram bot for managing and paying electricity bills, built with Express.js, PostgreSQL, and Paystack payment integration.
+A Telegram bot for vending electricity, built with Express.js, PostgreSQL, and Paystack for wallet funding. Electricity is supplied by the **Fucil Agent Reseller API** — the bot is a reseller: customers pay into a bot wallet, and each purchase is fulfilled by a real Fucil `lookup` + `vend`.
 
 ## 🚀 Features
 
 - **User Registration** - Automatic registration via Telegram
-- **Meter Account Management** - Add, view, and remove meter accounts
-- **Bill Management** - View pending bills and payment status
-- **Secure Payments** - Pay bills via Paystack payment gateway
+- **Meter Account Management** - Add, view, and remove meter accounts (disco list comes from Fucil)
+- **Real Token Vending** - Prepaid meters receive a genuine Fucil token, never a fabricated one
+- **Wallet Funding** - Customers top up via Paystack, then pay from their bot wallet
+- **Automatic Refunds** - A failed vend credits the customer's wallet back
+- **Pending Vend Handling** - Fucil webhooks resolve 202/pending vends, with on-demand polling as a fallback
 - **Payment History** - Track all payment transactions
-- **Usage Statistics** - Monitor electricity usage and spending
-- **Webhook Notifications** - Real-time payment confirmations
 
 ## Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - PostgreSQL 14+
 - Paystack account (for payment processing)
+- **Fucil agent API key** (for vending)
 - Telegram Bot token (from @BotFather)
 
 ## 🛠️ Installation
@@ -40,6 +41,9 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
    Edit `.env` with your credentials:
    - `TELEGRAM_BOT_TOKEN` - Your Telegram bot token
    - `PAYSTACK_SECRET_KEY` - Your Paystack secret key (also verifies webhook signatures)
+   - `FUCIL_API_KEY` - Your Fucil agent API key
+   - `FUCIL_WEBHOOK_SECRET` - Webhook secret from your Fucil agent profile
+   - `FUCIL_SANDBOX` - `true` while the Fucil profile is in Sandbox
    - Database credentials
 
 4. **Set up database**
@@ -47,7 +51,8 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
    # Create PostgreSQL database
    createdb electricity_bot
    
-   # Run migrations
+   # Build the TypeScript sources, then run migrations
+   npm run build:bot
    npm run migrate
    
    # (Optional) Seed test data
@@ -81,9 +86,10 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/webhook` | Paystack webhook receiver |
+| `POST` | `/api/webhook` | Paystack webhook receiver (wallet top-ups) |
 | `GET` | `/api/payment/status/:reference` | Check payment status |
 | `POST` | `/api/payment/initialize` | Initialize a payment |
+| `POST` | `/api/fucil/webhook` | Fucil vend events (`vend.completed` / `vend.pending` / `vend.failed`) |
 
 ## 🏗️ Project Structure
 
@@ -91,49 +97,71 @@ A Telegram bot for managing and paying electricity bills, built with Express.js,
 electricity-bill-bot/
 ├── src/
 │   ├── config/
-│   │   ├── database.js      # Database configuration
-│   │   ├── migrate.js       # Migration script
-│   │   └── seed.js          # Seed script
+│   │   ├── database.ts      # Database configuration
+│   │   ├── migrate.ts       # Migration script
+│   │   └── seed.ts          # Seed script
 │   ├── models/
-│   │   ├── index.js         # Model associations
-│   │   ├── User.js          # User model
-│   │   ├── Account.js       # Meter account model
-│   │   ├── Bill.js          # Bill model
-│   │   ├── Payment.js       # Payment model
-│   │   └── Transaction.js   # Transaction model
+│   │   ├── index.ts         # Model definitions and associations
+│   │   ├── User.ts          # User model
+│   │   ├── Account.ts       # Meter account model
+│   │   ├── Bill.ts          # Bill model
+│   │   ├── Payment.ts       # Payment model
+│   │   ├── Vend.ts          # Fucil vend lifecycle (one per bill)
+│   │   ├── WalletTransaction.ts # Wallet debits, credits, refunds
+│   │   └── Transaction.ts   # Transaction model
 │   ├── services/
-│   │   ├── paystack.js      # Paystack integration
-│   │   ├── billService.js   # Bill operations
-│   │   ├── paymentService.js # Payment operations
-│   │   └── userService.js   # User operations
+│   │   ├── fucil.ts         # Fucil agent API client + webhook signatures
+│   │   ├── vendService.ts   # Lookup/vend orchestration, refunds, resolution
+│   │   ├── walletService.ts # Wallet debit/credit/refund (balance locking)
+│   │   ├── paystack.ts      # Paystack integration (wallet top-ups only)
+│   │   ├── billService.ts   # Bill operations
+│   │   ├── paymentService.ts # Payment operations
+│   │   └── userService.ts   # User operations
+│   ├── scripts/
+│   │   ├── fucil-check.ts   # Probes the Fucil client and sandbox scenarios
+│   │   └── vend-e2e.ts      # End-to-end vend lifecycle test
 │   ├── bot/
-│   │   ├── index.js         # Bot initialization
+│   │   ├── index.ts         # Bot initialization
+│   │   ├── types.ts         # Shared Telegram types
 │   │   └── commands/
-│   │       ├── start.js     # Start/help commands
-│   │       ├── bills.js     # Bills command
-│   │       ├── accounts.js  # Account management
-│   │       ├── payment.js   # Payment commands
-│   │       ├── history.js   # History & stats
-│   │       └── profile.js   # Profile management
+│   │       ├── start.ts     # Start/help commands
+│   │       ├── bills.ts     # Bills command
+│   │       ├── accounts.ts  # Account management
+│   │       ├── payment.ts   # Payment commands
+│   │       ├── history.ts   # History & stats
+│   │       ├── profile.ts   # Profile management
+│   │       └── wallet.ts    # Wallet top-up
 │   ├── routes/
-│   │   └── payment.js       # API routes
+│   │   ├── payment.ts       # Payment API routes
+│   │   ├── fucil.ts         # Fucil vend webhook receiver
+│   │   └── admin.ts         # Admin API routes
 │   ├── utils/
-│   │   └── helpers.js       # Utility functions
-│   ├── app.js               # Express app setup
-│   └── index.js             # Entry point
+│   │   ├── discos.ts        # Disco name <-> Fucil code mapping
+│   │   └── helpers.ts       # Utility functions
+│   ├── app.ts               # Express app setup
+│   └── index.ts             # Entry point
+├── dist/                    # Compiled JavaScript (generated by `npm run build:bot`)
 ├── .env.example             # Environment template
-├── package.json             # Dependencies
+├── tsconfig.json            # TypeScript configuration
+├── package.json             # Dependencies and scripts
 └── README.md                # Documentation
 ```
 
-## 💳 Payment Flow
+## 💳 Payment & Vending Flow
 
-1. User selects a bill to pay via `/pay` or `/bills`
-2. Bot creates a payment record and generates Paystack link
-3. User clicks the payment link and completes payment
-4. Paystack sends webhook notification
-5. Bot verifies payment and updates bill status
-6. User receives confirmation message
+1. User tops up their bot wallet via Paystack (`/wallet` → top up)
+2. User picks a meter and amount (`/pay`) or a pending bill (`/bills`)
+3. Bot debits the user's wallet and opens a `Vend` record in the same transaction — a bill can only ever produce one vend, so a double-tap cannot double-charge or double-vend
+4. Bot calls Fucil `POST /lookup` to validate the meter and get a reference, then `POST /vend`
+5. On `200`, the token is stored on the vend and the bill, and the user receives it in Telegram
+6. On `202`, the vend is marked `pending`. Fucil's `vend.completed` / `vend.failed` webhook resolves it; the *Check Status* button polls `POST /vend/poll` in the meantime
+7. On failure, the customer's wallet is credited back automatically and the bill is not marked paid
+
+Postpaid meters skip the vend (Fucil's vend is a prepaid token operation) and settle without a token.
+
+### Webhook
+
+Set `POST {APP_URL}/api/fucil/webhook` on your Fucil agent profile. Verify `X-Fucil-Signature` as `sha256=` + HMAC-SHA256 of `{timestamp}.{raw_json_body}` using `FUCIL_WEBHOOK_SECRET`; the handler also rejects timestamps older than five minutes to prevent replay.
 
 ## 🔒 Security Features
 
@@ -146,6 +174,9 @@ electricity-bill-bot/
 ## 🧪 Testing
 
 ```bash
+# Type-check the sources
+npm run typecheck
+
 # Run with test data
 npm run seed
 npm run dev
@@ -153,6 +184,23 @@ npm run dev
 # Test with your Telegram bot
 # Send /start to your bot
 ```
+
+### Fucil checks
+
+```bash
+npm run build:bot
+
+# Probe the Fucil client: health, balance, discos, and all four sandbox scenarios
+node dist/scripts/fucil-check.js
+
+# End-to-end vend lifecycle against the sandbox and the local database.
+# Creates and cleans up its own user, meter, wallet balance and bills.
+E2E_SCENARIO=success node dist/scripts/vend-e2e.js
+E2E_SCENARIO=pending node dist/scripts/vend-e2e.js
+E2E_SCENARIO=failed  node dist/scripts/vend-e2e.js
+```
+
+`vend-e2e` asserts the token lands on the bill, the wallet is debited once, a second debit is refused, a failed vend is refunded, a `0000000000000` lookup failure is refunded, and webhook signatures reject tampering, bad secrets, and stale timestamps.
 
 ## 📝 Development
 
@@ -167,9 +215,10 @@ npm run dev
 2. Configure production database
 3. Set up SSL certificates
 4. Configure webhook URL in Paystack dashboard
-5. Use PM2 or similar process manager:
+5. Build the TypeScript sources and use PM2 or a similar process manager:
    ```bash
-   pm2 start src/index.js --name electricity-bot
+   npm run build:bot
+   pm2 start dist/index.js --name electricity-bot
    ```
 
 ## 🤝 Contributing
