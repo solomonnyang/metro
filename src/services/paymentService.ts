@@ -3,6 +3,7 @@ import BillService from './billService.js';
 import PaystackService from './paystack.js';
 import WalletService from './walletService.js';
 import { v4 as uuidv4 } from 'uuid';
+import { Op } from 'sequelize';
 import { PaystackError, type PaystackVerifyData } from './paystack.js';
 
 /** Payment with the associations `verifyPayment` eager-loads. */
@@ -229,6 +230,10 @@ class PaymentService {
     if (userId && payment.userId !== userId) return { success: false, error: 'Not authorized' };
     if (payment.status === 'success') return { success: false, error: 'This payment is already completed.' };
 
+    if (await this.reconcileIfCaptured(payment)) {
+      return { success: false, error: 'This payment was already completed on Paystack and has been reconciled.' };
+    }
+
     await payment.update({
       status: 'failed',
       metadata: {
@@ -255,7 +260,17 @@ class PaymentService {
         required: true
       }]
     });
+
+    let cancelled = 0;
+    let reconciled = 0;
+
     for (const payment of pending) {
+      // Never fail a payment Paystack already captured; settle it instead.
+      if (await this.reconcileIfCaptured(payment)) {
+        reconciled += 1;
+        continue;
+      }
+
       await payment.update({
         status: 'failed',
         metadata: {
@@ -268,9 +283,43 @@ class PaymentService {
       if (payment.bill) {
         await payment.bill.update({ status: 'cancelled' });
       }
+      cancelled += 1;
     }
 
-    return { cancelled: pending.length };
+    return { cancelled, reconciled };
+  }
+
+  /**
+   * A payment that is not yet `success` may still have been captured by
+   * Paystack — its webhook may be missing, delayed, or rejected. Verify against
+   * Paystack and, if it was captured, settle it through the normal path.
+   *
+   * Returns true when the payment turned out to be captured and was applied.
+   * Throws when Paystack cannot be reached, because we must not treat an
+   * unverifiable payment as safe to cancel.
+   */
+  private static async reconcileIfCaptured(payment: Payment): Promise<boolean> {
+    const reference = payment.paystackReference;
+    if (!reference) return false;
+
+    let result: VerifyPaymentResult;
+    try {
+      result = await this.verifyPayment(reference);
+    } catch (error) {
+      throw new Error(
+        `Cannot reconcile ${reference} while Paystack is unreachable: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    return result.success;
+  }
+
+  /** Payments still awaiting settlement: anything not already successful. */
+  static async listUnreconciled(limit = 100) {
+    return await Payment.findAll({
+      where: { status: { [Op.in]: ['pending', 'failed'] } },
+      order: [['createdAt', 'DESC']],
+      limit
+    });
   }
 
   static async handleWebhook(

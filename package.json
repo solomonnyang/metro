@@ -20,7 +20,8 @@
     "seed": "node dist/config/seed.js",
     "fucil:check": "npm run build:bot && node dist/scripts/fucil-check.js",
     "test:vend": "npm run build:bot && node dist/scripts/vend-e2e.js",
-    "wallet:credit": "node dist/scripts/wallet-credit.js"
+    "wallet:credit": "node dist/scripts/wallet-credit.js",
+    "payments:reconcile": "npm run build:bot && node dist/scripts/reconcile-payments.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
