@@ -221,6 +221,87 @@ npm run dev
    pm2 start dist/index.js --name electricity-bot
    ```
 
+## 🔁 Redeployment (Cloud Run)
+
+The service is built from source by Google Cloud Buildpacks and runs on Cloud Run.
+
+| Setting | Value |
+|---------|-------|
+| Project | `metroelectric` |
+| Service | `metro` |
+| Region  | `us-east1` |
+| URL     | `https://metro-rzhmchplga-ue.a.run.app` (the classic `https://metro-916732387764.us-east1.run.app` also resolves) |
+
+### 1. Authenticate and select the project
+
+```bash
+gcloud auth login
+gcloud config set project metroelectric
+```
+
+### 2. Environment variables
+
+Cloud Run holds its own copy of the environment — `.env` is **not** uploaded with the code.
+The service is already configured, so only touch this when values change.
+
+- Update one/more variables without disturbing the rest:
+
+  ```bash
+  gcloud run services update metro --region us-east1 --project metroelectric \
+    --update-env-vars FUCIL_API_KEY=...,FUCIL_SANDBOX=true
+  ```
+
+- Or replace the whole set from a file (`--env-vars-file` **replaces everything**, so include
+  every variable). Exclude `PORT` (Cloud Run injects it), and set `NODE_ENV=production`,
+  `TELEGRAM_WEBHOOK=true`, and `APP_URL` to the Cloud Run URL above.
+
+### 3. Deploy
+
+```bash
+gcloud run deploy metro \
+  --source . \
+  --region us-east1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --project metroelectric
+```
+
+Omit any env flags to keep the variables already on the service.
+
+### 4. Database migrations (manual)
+
+Cloud Run does **not** execute the `Procfile` `release` step, so migrations are not applied on
+deploy. Run them yourself against the production database:
+
+```bash
+npm run build:bot && npm run migrate
+```
+
+`migrate` uses `sequelize.sync({ alter: true })`, which has silently skipped changes before
+(e.g. dropping `NOT NULL` on `payments.billId`) — always verify the schema after a change.
+
+### 5. Post-deploy checks
+
+```bash
+curl https://metro-rzhmchplga-ue.a.run.app/health
+curl https://metro-rzhmchplga-ue.a.run.app/api/fucil/health
+```
+
+### 6. Webhook URLs to keep in sync
+
+| Provider | URL |
+|----------|-----|
+| Telegram | Set automatically at boot when `TELEGRAM_WEBHOOK=true` (`{APP_URL}/api/telegram-webhook`) |
+| Paystack | `{APP_URL}/api/webhook` — configure in the Paystack dashboard |
+| Fucil    | `{APP_URL}/api/fucil/webhook` — configure on the Fucil agent profile; set `FUCIL_WEBHOOK_SECRET` to enforce signatures |
+
+### Build notes
+
+- The buildpack runs `npm run gcp-build` (aliased to `npm run build`) during the image build and
+  then removes `devDependencies`. Keep anything needed at runtime in `dependencies`, and **do not
+  compile TypeScript at container start** (no `prestart` build step).
+- `npm start` runs the compiled `dist/index.js`; compile locally with `npm run build:bot`.
+
 ## 🤝 Contributing
 
 1. Fork the repository
